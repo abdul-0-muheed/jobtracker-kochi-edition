@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}LinkedIn Sync{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">LinkedIn Sync</h1>
+    <p class="page-subtitle">Connect LinkedIn to sync your connection requests and messages</p>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-8">
+
+    <!-- Status Card -->
+    <div class="card mb-4">
+      <div class="card-body p-4">
+        {% if settings.linkedin.connected and session_exists %}
+        <!-- Connected State -->
+        <div class="d-flex align-items-center gap-3 mb-4">
+          <div class="li-status-icon connected">
+            <i class="bi bi-linkedin fs-2 text-primary"></i>
+          </div>
+          <div>
+            <h4 class="mb-0">Connected</h4>
+            <p class="text-muted mb-0">
+              Signed in as <strong>{{ settings.linkedin.user_name or 'LinkedIn User' }}</strong>
+            </p>
+          </div>
+          <div class="ms-auto">
+            <span class="status-dot status-green"></span>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+          <div class="col-sm-6">
+            <div class="info-row">
+              <span class="text-muted small">Last sync</span>
+              <span class="fw-medium">
+                {{ settings.linkedin.last_sync_at | reltime if settings.linkedin.last_sync_at else 'Never' }}
+              </span>
+            </div>
+          </div>
+          <div class="col-sm-6">
+            <div class="info-row">
+              <span class="text-muted small">Session file</span>
+              <span class="text-success small fw-medium"><i class="bi bi-shield-lock me-1"></i>Encrypted</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sync Form -->
+        <form method="POST" action="{{ url_for('linkedin.trigger_sync') }}" id="syncForm">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Session Passphrase</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-key"></i></span>
+              <input type="password" class="form-control" name="passphrase"
+                     placeholder="Enter passphrase to decrypt session…" autocomplete="off" required>
+            </div>
+            <div class="form-text">Required to decrypt your saved LinkedIn cookies.</div>
+          </div>
+          <div class="d-flex gap-2 flex-wrap">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-arrow-repeat me-1"></i> Sync Now
+            </button>
+            <form method="POST" action="{{ url_for('linkedin.reset_passphrase') }}" class="d-inline">
+              <button type="submit" class="btn btn-outline-warning"
+                      onclick="return confirm('This will delete your saved session. You will need to log in to LinkedIn again and set a new passphrase. Continue?')">
+                <i class="bi bi-key me-1"></i> Reset Passphrase
+              </button>
+            </form>
+            <form method="POST" action="{{ url_for('linkedin.revoke_session') }}" class="d-inline">
+              <button type="submit" class="btn btn-outline-danger"
+                      onclick="return confirm('This will remove your saved LinkedIn session. Continue?')">
+                <i class="bi bi-x-circle me-1"></i> Revoke Session
+              </button>
+            </form>
+          </div>
+        </form>
+
+        <!-- Sync Progress Polling -->
+        <div id="syncProgress" class="mt-3 d-none">
+          <div class="progress mb-2">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%"></div>
+          </div>
+          <div id="syncStatus" class="text-muted small"></div>
+        </div>
+
+        {% else %}
+        <!-- Not Connected State -->
+        <div class="text-center py-4">
+          <i class="bi bi-linkedin display-4 text-muted mb-3 d-block"></i>
+          <h4>Connect LinkedIn</h4>
+          <p class="text-muted mb-4">
+            A Chromium browser window will open so you can log in to LinkedIn normally.
+            Your session cookies are encrypted and stored locally — never uploaded anywhere.
+          </p>
+          <a href="{{ url_for('linkedin.auth') }}" class="btn btn-primary btn-lg">
+            <i class="bi bi-linkedin me-2"></i> Connect LinkedIn
+          </a>
+          <div class="mt-3">
+            <form method="POST" action="{{ url_for('linkedin.reset_passphrase') }}" class="d-inline">
+              <button type="submit" class="btn btn-sm btn-outline-secondary"
+                      onclick="return confirm('This will delete any saved session file and let you start fresh. Continue?')">
+                <i class="bi bi-arrow-counterclockwise me-1"></i> Reset Passphrase / Start Fresh
+              </button>
+            </form>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Sync History -->
+    {% if sync_history %}
+    <div class="card">
+      <div class="card-header">
+        <h5 class="card-title mb-0"><i class="bi bi-clock-history me-2"></i>Sync History</h5>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead>
+            <tr>
+              <th>Started</th>
+              <th>Duration</th>
+              <th>Processed</th>
+              <th>New</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for job in sync_history %}
+            <tr>
+              <td class="small">{{ job.started_at | datetimeformat('%b %d %H:%M') }}</td>
+              <td class="small text-muted">
+                {% if job.finished_at and job.started_at %}
+                  ~{{ ((job.finished_at | string)[:19] and 1) }}m
+                {% else %}—{% endif %}
+              </td>
+              <td>{{ job.items_processed or 0 }}</td>
+              <td>{{ job.items_new or 0 }}</td>
+              <td>
+                <span class="badge {{ 'bg-success' if job.status == 'success'
+                                    else 'bg-danger' if job.status == 'failed'
+                                    else 'bg-warning text-dark' if job.status == 'aborted'
+                                    else 'bg-secondary' }}">
+                  {{ job.status }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Right: Info + Settings -->
+  <div class="col-lg-4">
+    <div class="card mb-4">
+      <div class="card-header">
+        <h6 class="card-title mb-0"><i class="bi bi-info-circle me-2"></i>How Sync Works</h6>
+      </div>
+      <div class="card-body">
+        <ul class="list-unstyled mb-0 small text-muted">
+          <li class="mb-2"><i class="bi bi-check-circle text-success me-2"></i>Scrapes your sent LinkedIn connection requests</li>
+          <li class="mb-2"><i class="bi bi-check-circle text-success me-2"></i>Matches recipients to your tracked companies</li>
+          <li class="mb-2"><i class="bi bi-check-circle text-success me-2"></i>Captures message threads with company employees</li>
+          <li class="mb-2"><i class="bi bi-shield-check text-primary me-2"></i>Rate-limited (8–15s delays between requests)</li>
+          <li class="mb-2"><i class="bi bi-shield-check text-primary me-2"></i>Max 30 page loads per sync session</li>
+          <li><i class="bi bi-lock text-warning me-2"></i>Session encrypted with your passphrase (AES-256)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h6 class="card-title mb-0"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>Important</h6>
+      </div>
+      <div class="card-body small text-muted">
+        <p>LinkedIn scraping is read-only and operates within a real logged-in session — the same as using LinkedIn in your browser.</p>
+        <p class="mb-0">The app reads: your sent connection requests, your messages with company employees. It does NOT send connections or messages on your behalf.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const syncForm = document.getElementById('syncForm');
+if (syncForm) {
+  syncForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const progressDiv = document.getElementById('syncProgress');
+    const statusDiv = document.getElementById('syncStatus');
+    progressDiv.classList.remove('d-none');
+    statusDiv.textContent = 'Starting sync…';
+
+    const formData = new FormData(syncForm);
+    const res = await fetch(syncForm.action, { method: 'POST', body: formData });
+
+    if (!res.ok) {
+      statusDiv.textContent = 'Failed to start sync.';
+      return;
+    }
+
+    const { job_id } = await res.json();
+    statusDiv.textContent = `Sync running (job: ${job_id})…`;
+
+    // Poll for status
+    const poll = setInterval(async () => {
+      const s = await fetch(`/api/sync-status/${job_id}`);
+      const d = await s.json();
+      statusDiv.textContent = `${d.status} — ${d.items_processed || 0} processed, ${d.items_new || 0} new`;
+
+      if (d.status !== 'running') {
+        clearInterval(poll);
+        if (d.status === 'success') {
+          statusDiv.textContent = `✓ Sync complete! ${d.items_new || 0} new events imported.`;
+          setTimeout(() => location.reload(), 2000);
+        } else {
+          statusDiv.textContent = `✗ Sync ${d.status}: ${d.error || 'Unknown error'}`;
+        }
+      }
+    }, 2000);
+  });
+}
+</script>
+{% endblock %}

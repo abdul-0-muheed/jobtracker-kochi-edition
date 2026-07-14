@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}LinkedIn Auth{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-4">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body p-4 text-center">
+        <i class="bi bi-linkedin display-3 text-primary mb-3 d-block"></i>
+        <h4>Connect LinkedIn</h4>
+        <p class="text-muted mb-4">
+          Choose a passphrase to encrypt your LinkedIn session cookies locally.
+          You'll need this passphrase every time you sync.
+        </p>
+        <form method="POST" action="{{ url_for('linkedin.auth_start') }}">
+          <div class="mb-3 text-start">
+            <label class="form-label fw-semibold">Session Passphrase</label>
+            <input type="password" class="form-control" name="passphrase"
+                   placeholder="Choose a strong passphrase…" required autocomplete="off">
+            <div class="form-text">This encrypts your session cookies with AES-256. Store it safely.</div>
+          </div>
+          <div class="mb-4 text-start">
+            <label class="form-label fw-semibold">Confirm Passphrase</label>
+            <input type="password" class="form-control" id="confirmPass"
+                   name="confirm_passphrase"
+                   placeholder="Confirm passphrase…" required autocomplete="off">
+          </div>
+          <button type="submit" class="btn btn-primary w-100" id="authSubmitBtn">
+            <i class="bi bi-linkedin me-2"></i> Open LinkedIn Login Window
+          </button>
+        </form>
+        <p class="text-muted small mt-3">
+          A Chromium window will open. Log in normally. The window will close automatically after successful login.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('authSubmitBtn').closest('form').addEventListener('submit', (e) => {
+  const pass1 = document.querySelector('[name=passphrase]').value;
+  const pass2 = document.getElementById('confirmPass').value;
+  if (pass1 !== pass2) {
+    e.preventDefault();
+    alert('Passphrases do not match.');
+  }
+});
+</script>
+{% endblock %}

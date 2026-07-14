@@ -1,0 +1,153 @@
+===============================================================
+  JobTracker — Change Log / Document
+===============================================================
+
+SESSION 1 (2026-07-02)
+-----------------------
+CREATED: Full Flask monolithic app from PRD spec
+  - app.py, run.py, config.py, models.py
+  - blueprints/: dashboard.py, companies.py, linkedin.py, scraper.py, api.py
+  - services/: spreadsheet_parser.py, linkedin_client.py, matching.py, reminders.py
+  - templates/: base.html, index.html, companies/list.html, companies/detail.html,
+                linkedin.html, linkedin_auth.html, settings.html, upload.html
+  - static/css/style.css, static/js/main.js
+  - tests/: test_parser.py, test_matching.py, test_reminders.py
+  - start.bat (one-click launch)
+  - import_companies.py (XLSX import utility)
+
+SCHEMA: 7 SQLite tables
+  companies, applications, contacts, linkedin_events, follow_ups, openings, scraping_jobs
+
+SESSION 2 (2026-07-08)
+-----------------------
+FIXED: spreadsheet_parser.py — BOM stripping, founder name cleaning,
+       column alias normalization for kochi_software_companies.xlsx
+FIXED: run.py — removed emoji print (Windows UnicodeEncodeError)
+FIXED: tests/test_parser.py — GC + missing_ok for Windows file locks
+FIXED: tests/test_matching.py — updated assertions for normalized strings
+CREATED: check_parse.py — XLSX verification script
+IMPORTED: 302 companies from kochi_software_companies.xlsx into DB
+
+SESSION 3 — LinkedIn Fix (2026-07-08)
+---------------------------------------
+FIXED: blueprints/linkedin.py — full rewrite
+  - Removed broken daemon-thread Playwright call
+  - New auth flow: POST /auth/start → stores passphrase in flask session
+    → redirects to /auth/waiting page showing manual run command
+  - New /auth/check AJAX endpoint polls for session file existence
+  - Added /reset-passphrase route (clears session + redirects to auth)
+  - /revoke still works as before
+
+CREATED: linkedin_login_helper.py
+  - Standalone script that opens Chromium visibly for LinkedIn login
+  - Saves encrypted session cookies (AES-256 via Fernet)
+  - User runs this manually from their own terminal
+
+CREATED: templates/linkedin_waiting.html
+  - Shows copy-able terminal command
+  - Auto-polls /auth/check every 5 seconds
+  - Redirects automatically on success
+
+FIXED: templates/linkedin_auth.html — added missing name="confirm_passphrase"
+       (this was the root cause of the login loop)
+
+FIXED: templates/companies/detail.html — replaced Jinja2 getattr() (undefined)
+       with direct field access
+
+CHANGED: run.py — debug=True for visible tracebacks in browser
+
+SESSION 4 — Phone Number & Call Status (2026-07-08)
+-----------------------------------------------------
+CHANGED: models.py
+  - Added Company.phone_number (TEXT) — manually entered by user
+  - Added Company.call_status (TEXT, default='not_called')
+    Enum: 'not_called' | 'called'
+
+MIGRATED: DB (migrate_phone_call.py)
+  - ALTER TABLE companies ADD COLUMN phone_number TEXT
+  - ALTER TABLE companies ADD COLUMN call_status TEXT DEFAULT 'not_called'
+
+IMPORTED: Phone numbers from XLSX 'Numbers' column (backfill_phones.py)
+  - 1 company had a phone number: 2Base Technologies Pvt Ltd → 91 484 295 0235
+
+CHANGED: blueprints/companies.py
+  - Added POST /companies/<id>/toggle-call
+    Toggles call_status between 'not_called' and 'called'
+    Returns JSON if AJAX, else redirect
+  - Added POST /companies/<id>/save-phone
+    Saves phone_number for a company
+    Returns JSON if AJAX, else redirect
+  - Added phone_number, call_status to CSV export fields
+
+CHANGED: templates/companies/list.html
+  - Added "Call" column to table header
+  - Per-row call badge: red "Call?" if not_called, green "Called" if called
+  - Phone number shown below badge (if set)
+  - AJAX toggle — no page reload on click
+  - Empty colspan updated from 6 → 7
+
+CHANGED: templates/companies/detail.html
+  - Added "Phone & Call" card to right sidebar
+  - Phone number input with AJAX Save button (POST /save-phone)
+  - Call status toggle button — instantly flips green/red via AJAX
+
+CHANGED: blueprints/companies.py — CSV export now includes phone_number, call_status
+
+SESSION 5 — Career Scraper Fix (2026-07-13)
+-------------------------------------------
+FIXED: services/career_scraper.py — Full overhaul (v2), scraper was returning 0 jobs
+  BUG 1 — _JOB_KEYWORDS regex was too narrow
+    Added: recruiter, hr, talent, sales, marketing, support, ux, ui, graphic,
+           content, writer, finance, accountant, operations, embedded, network,
+           system, infrastructure, product, growth, seo, dba, etl, helpdesk,
+           administrator, vacancy, role, hiring, and 15+ more terms
+  BUG 2 — _NOISE_PATTERNS used .search() instead of .match()
+    Old: re.compile(r"(cookie|privacy|...)", re.I)  ← blocked valid job titles
+    New: re.compile(r"^(cookie policy|privacy policy|...)$", re.I)  ← exact match
+  BUG 3 — SPA detection threshold too low (300 chars)
+    Old: len(body_text) < 300 and root_div  ← most JS career pages skipped
+    New: threshold 800 chars; also detects via link count < 5
+  BUG 4 — _extract_job_links URL filter too restrictive
+    Old: required URL to contain "job"/"career"/etc. even for same-domain links
+    New: same-domain links allowed freely; only cross-domain links need job URL
+  BUG 5 — No redirect URL tracking
+    Old: ATS platform detected from original URL only
+    New: final_url after httpx redirect is used for ATS detection and parsing
+  BUG 6 — Only 7 ATS parsers
+    Added: Workable, Recruitee, Teamtailor, Personio, iCIMS, Breezy HR, JazzHR
+    Added: _detect_ats_platform() — maps URL patterns to platform names
+    Added: _ATS_URL_PATTERNS — dict of ATS regex patterns
+    Added: Try ALL ATS parsers on every page (catches embedded ATS widgets)
+  BUG 7 — Playwright scraping too shallow
+    Old: 1 scroll + 4s wait
+    New: 3 scroll passes, wait for job CSS selectors, 5s final wait, 30s timeout
+
+CHANGED: services/career_scraper.py — file grows from 402 → 636 lines
+
+===============================================================
+  FILES MODIFIED THIS PROJECT
+===============================================================
+e:\jobhunting\local-runner\local-runner\
+  models.py
+  app.py
+  run.py
+  config.py
+  blueprints\companies.py
+  blueprints\linkedin.py
+  services\spreadsheet_parser.py
+  templates\base.html
+  templates\companies\list.html
+  templates\companies\detail.html
+  templates\linkedin.html
+  templates\linkedin_auth.html
+  templates\linkedin_waiting.html  [NEW]
+  linkedin_login_helper.py          [NEW]
+  migrate_phone_call.py             [NEW]
+  backfill_phones.py                [NEW]
+  import_companies.py               [NEW]
+  check_parse.py                    [NEW]
+  diagnose.py                       [NEW - dev tool]
+  start.bat                         [NEW]
+  tests\test_parser.py
+  tests\test_matching.py
+  tests\test_reminders.py

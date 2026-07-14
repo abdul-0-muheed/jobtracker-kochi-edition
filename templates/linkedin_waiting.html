@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}LinkedIn — Open Browser{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-4">
+  <div class="col-md-7">
+
+    {% if session_exists %}
+    <!-- Already connected -->
+    <div class="card border-success">
+      <div class="card-body p-4 text-center">
+        <i class="bi bi-check-circle-fill display-3 text-success mb-3 d-block"></i>
+        <h4>Session Saved!</h4>
+        <p class="text-muted">Your LinkedIn session was found. You're connected.</p>
+        <a href="{{ url_for('linkedin.linkedin_status') }}" class="btn btn-success btn-lg">
+          <i class="bi bi-arrow-right me-2"></i> Go to LinkedIn Sync
+        </a>
+      </div>
+    </div>
+
+    {% else %}
+    <!-- Waiting for login -->
+    <div class="card">
+      <div class="card-body p-4">
+        <div class="text-center mb-4">
+          <i class="bi bi-terminal display-3 text-primary mb-3 d-block"></i>
+          <h4>Open LinkedIn in Browser</h4>
+          <p class="text-muted">
+            Run the command below in a <strong>new terminal window</strong>
+            to open the LinkedIn login browser.
+          </p>
+        </div>
+
+        <div class="mb-4">
+          <label class="form-label fw-semibold small text-muted text-uppercase">
+            Step 1 — Open a new terminal (PowerShell or CMD) and run:
+          </label>
+          <div class="input-group">
+            <input type="text" class="form-control font-monospace small"
+                   id="cmdBox" value="{{ cmd }}" readonly>
+            <button class="btn btn-outline-secondary" onclick="copyCmd()" id="copyBtn" title="Copy">
+              <i class="bi bi-clipboard"></i>
+            </button>
+          </div>
+          <div class="form-text mt-1">
+            <i class="bi bi-info-circle me-1"></i>
+            A Chromium window will open. Log in to LinkedIn, then come back here.
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <label class="form-label fw-semibold small text-muted text-uppercase">
+            Step 2 — After logging in, click:
+          </label>
+          <button class="btn btn-primary w-100" id="checkBtn" onclick="checkConnected()">
+            <i class="bi bi-arrow-repeat me-1"></i> I've Logged In — Check Connection
+          </button>
+        </div>
+
+        <div id="statusMsg" class="alert d-none"></div>
+
+        <div class="text-center">
+          <small class="text-muted">
+            This page auto-checks every 5 seconds.
+            <span id="countDown"></span>
+          </small>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyCmd() {
+  const box = document.getElementById('cmdBox');
+  box.select();
+  document.execCommand('copy');
+  const btn = document.getElementById('copyBtn');
+  btn.innerHTML = '<i class="bi bi-check text-success"></i>';
+  setTimeout(() => { btn.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 2000);
+}
+
+async function checkConnected() {
+  const msg = document.getElementById('statusMsg');
+  const btn = document.getElementById('checkBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Checking…';
+
+  try {
+    const r = await fetch('{{ url_for("linkedin.auth_check") }}');
+    const d = await r.json();
+    if (d.connected) {
+      msg.className = 'alert alert-success';
+      msg.textContent = 'Connected! Redirecting…';
+      msg.classList.remove('d-none');
+      clearInterval(pollTimer);
+      setTimeout(() => { window.location = '{{ url_for("linkedin.linkedin_status") }}'; }, 1500);
+    } else {
+      msg.className = 'alert alert-warning';
+      msg.textContent = 'Not connected yet. Please complete the login in the browser window.';
+      msg.classList.remove('d-none');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i> I\'ve Logged In — Check Connection';
+    }
+  } catch(e) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i> Check Connection';
+  }
+}
+
+// Auto-poll every 5 seconds
+let secs = 5;
+const countEl = document.getElementById('countDown');
+function tick() {
+  if (countEl) countEl.textContent = '(next auto-check in ' + secs + 's)';
+  secs--;
+  if (secs < 0) {
+    secs = 5;
+    checkConnected();
+  }
+}
+const pollTimer = setInterval(tick, 1000);
+tick();
+</script>
+{% endblock %}

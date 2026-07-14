@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Upload Companies{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Upload Company Spreadsheet</h1>
+    <p class="page-subtitle">Import your Kochi companies XLSX (19-column format)</p>
+  </div>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-body p-4">
+
+        <form method="POST" action="{{ url_for('companies.upload_xlsx') }}"
+              enctype="multipart/form-data" id="uploadForm">
+
+          <!-- Drag-drop zone -->
+          <div class="dropzone" id="dropzone">
+            <div class="dropzone-content">
+              <i class="bi bi-file-earmark-spreadsheet dropzone-icon"></i>
+              <h5 class="dropzone-title">Drag & Drop your XLSX here</h5>
+              <p class="text-muted">or click to browse</p>
+              <input type="file" name="file" id="fileInput" accept=".xlsx" class="dropzone-input">
+              <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="browseBtn">
+                <i class="bi bi-folder2-open me-1"></i> Browse File
+              </button>
+            </div>
+            <div class="dropzone-selected d-none" id="dropzoneSelected">
+              <i class="bi bi-file-earmark-check text-success fs-3"></i>
+              <div id="selectedFileName" class="fw-semibold mt-1"></div>
+              <button type="button" class="btn btn-sm btn-link text-muted" id="clearFile">
+                Change file
+              </button>
+            </div>
+          </div>
+
+          <!-- Schema hint -->
+          <div class="schema-hint card mt-4">
+            <div class="card-header py-2">
+              <small class="text-muted fw-semibold">
+                <i class="bi bi-info-circle me-1"></i>Expected Columns (19)
+              </small>
+            </div>
+            <div class="card-body py-2">
+              <div class="d-flex flex-wrap gap-1">
+                {% for col in [
+                  'Company Name', 'Official Website', 'LinkedIn Company Page', 'Career Page',
+                  'HR Email', 'Founder / CEO', 'Founder LinkedIn', 'Location', 'Company Size',
+                  'Startup or MNC', 'Industry', 'Tech Stack', 'Uses React', 'Uses Python',
+                  'Uses AI', 'Internship Friendly', 'Freshers Hiring', 'Match Score', 'Notes'
+                ] %}
+                <span class="badge bg-secondary fw-normal">{{ col }}</span>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+
+          <!-- Preview area (populated by JS) -->
+          <div id="previewArea" class="mt-4 d-none">
+            <h6 class="fw-semibold mb-2">
+              <i class="bi bi-table me-1"></i> File Preview (first 5 rows)
+            </h6>
+            <div class="table-responsive">
+              <table class="table table-sm table-bordered preview-table" id="previewTable">
+              </table>
+            </div>
+          </div>
+
+          <!-- Upload progress -->
+          <div id="uploadProgress" class="mt-3 d-none">
+            <div class="progress">
+              <div class="progress-bar progress-bar-striped progress-bar-animated"
+                   style="width: 100%">Importing…</div>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="d-flex justify-content-between mt-4">
+            <a href="{{ url_for('companies.list_companies') }}" class="btn btn-secondary">
+              <i class="bi bi-x-lg me-1"></i> Cancel
+            </a>
+            <button type="submit" class="btn btn-primary" id="confirmBtn" disabled>
+              <i class="bi bi-check-lg me-1"></i> Confirm Import
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/upload.js') }}"></script>
+{% endblock %}

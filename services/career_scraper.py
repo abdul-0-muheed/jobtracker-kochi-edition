@@ -1,0 +1,635 @@
+"""
+services/career_scraper.py — Career page job scraping (rewritten v2).
+
+Strategy:
+  1. Try httpx + BeautifulSoup4 (fast, lightweight)
+  2. ATS-specific parsers for 13+ platforms: Greenhouse, Lever, Workday, Ashby,
+     BambooHR, Freshteam, SmartRecruiters, Workable, Recruitee, Teamtailor,
+     Personio, iCIMS, Breezy HR, JazzHR
+  3. Generic HTML job extraction with heuristics (avoids nav/menu text)
+  4. If page is a JS SPA (< 800 chars body text or very few links), fall back to
+     Playwright headless render with scroll + wait for job elements
+  5. Auto-detect ATS platform from final redirect URL
+  6. Try ALL ATS parsers as embedded widget fallback
+"""
+from __future__ import annotations
+
+import json
+import logging
+import random
+import re
+import time
+from urllib.parse import urlparse, urljoin
+from urllib.robotparser import RobotFileParser
+
+import httpx
+from bs4 import BeautifulSoup
+
+log = logging.getLogger(__name__)
+
+RATE_LIMIT_DELAY = (3, 6)
+
+# ── Domain-level SPA flag cache ───────────────────────────────────────────────
+_SPA_DOMAINS: set[str] = set()
+
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
+
+# Job title keywords — expanded to cover more common roles
+_JOB_KEYWORDS = re.compile(
+    r"\b(engineer|developer|designer|manager|analyst|intern|lead|architect|"
+    r"scientist|devops|frontend|backend|fullstack|full.stack|qa|tester|"
+    r"consultant|officer|executive|coordinator|specialist|associate|"
+    r"programmer|coder|data.scientist|ml.engineer|ai.engineer|react|python|"
+    r"java|node|flutter|android|ios|mobile|cloud|security|devrel|sre|"
+    r"technical.writer|product.manager|scrum.master|agile.coach|"
+    r"recruiter|talent|hr|human.resource|sales|marketing|support|"
+    r"graphic|ui|ux|content|writer|copywriter|finance|accountant|"
+    r"operations|embedded|firmware|hardware|network|system|infrastructure|"
+    r"product|growth|seo|paid.media|digital.marketing|business.development|"
+    r"account.manager|project.manager|delivery.manager|customer.success|"
+    r"technical.support|helpdesk|administrator|database|dba|etl|"
+    r"data.engineer|data.analyst|data.architect|bi|tableau|power.bi|"
+    r"openings|position|vacancy|role|hiring)\b",
+    re.IGNORECASE,
+)
+
+# Noise patterns — only block exact full-string noise phrases (using match not search)
+_NOISE_PATTERNS = re.compile(
+    r"^(cookie policy|privacy policy|terms of service|sign in|log in|register|"
+    r"subscribe|newsletter|copyright|all rights reserved|menu|navigation|"
+    r"our team|about us|contact us|follow us|learn more|read more|"
+    r"see more|view all|load more|apply now)$",
+    re.IGNORECASE,
+)
+
+# ATS platform detection by URL patterns
+_ATS_URL_PATTERNS = {
+    "greenhouse":      re.compile(r"greenhouse\.io|boards\.greenhouse\.io"),
+    "lever":           re.compile(r"lever\.co|jobs\.lever\.co"),
+    "workday":         re.compile(r"workday\.com|myworkdayjobs\.com"),
+    "ashby":           re.compile(r"ashbyhq\.com"),
+    "bamboohr":        re.compile(r"bamboohr\.com"),
+    "freshteam":       re.compile(r"freshteam\.com|freshworks\.com"),
+    "smartrecruiters": re.compile(r"smartrecruiters\.com"),
+    "workable":        re.compile(r"workable\.com|apply\.workable\.com"),
+    "recruitee":       re.compile(r"recruitee\.com"),
+    "teamtailor":      re.compile(r"teamtailor\.com|career\.teamtailor"),
+    "personio":        re.compile(r"personio\.com|personio\.de"),
+    "icims":           re.compile(r"icims\.com"),
+    "breezyhr":        re.compile(r"breezy\.hr|app\.breezy\.hr"),
+    "jazzhr":          re.compile(r"jazz\.co|hire\.jazz\.co"),
+}
+
+
+def _get_domain(url: str) -> str:
+    return urlparse(url).netloc.lower()
+
+
+def _abs_url(href: str, base_url: str) -> str:
+    if not href:
+        return ""
+    return urljoin(base_url, href)
+
+
+def _check_robots(url: str) -> bool:
+    parsed = urlparse(url)
+    robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+    rp = RobotFileParser()
+    rp.set_url(robots_url)
+    try:
+        rp.read()
+        return rp.can_fetch("*", url)
+    except Exception:
+        return True
+
+
+def _detect_ats_platform(url: str) -> str | None:
+    """Detect the ATS platform from a URL."""
+    for platform, pattern in _ATS_URL_PATTERNS.items():
+        if pattern.search(url):
+            return platform
+    return None
+
+
+# ── ATS-specific parsers ──────────────────────────────────────────────────────
+
+def _parse_greenhouse(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    jobs = []
+    # boards.greenhouse.io layout
+    for section in soup.find_all("section", class_=re.compile("level-0")):
+        dept = section.find(class_=re.compile("section-header"))
+        for item in section.find_all("div", class_=re.compile("opening")):
+            link = item.find("a", href=True)
+            title = link.get_text(strip=True) if link else ""
+            url = _abs_url(link["href"] if link else "", base_url)
+            loc_el = item.find(class_=re.compile("location"))
+            location = loc_el.get_text(strip=True) if loc_el else ""
+            if title:
+                jobs.append({"title": title, "location": location, "url": url, "source": "greenhouse"})
+    # Fallback: simpler greenhouse layout
+    if not jobs:
+        for item in soup.find_all("div", class_=re.compile("opening")):
+            link = item.find("a", href=True)
+            title = link.get_text(strip=True) if link else ""
+            url = _abs_url(link["href"] if link else "", base_url)
+            if title:
+                jobs.append({"title": title, "location": "", "url": url, "source": "greenhouse"})
+    # Table row variant
+    if not jobs:
+        for row in soup.find_all("tr"):
+            link = row.find("a", href=re.compile(r"/jobs/"))
+            if link:
+                title = link.get_text(strip=True)
+                url = _abs_url(link["href"], base_url)
+                if title:
+                    jobs.append({"title": title, "location": "", "url": url, "source": "greenhouse"})
+    return jobs
+
+
+def _parse_lever(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    jobs = []
+    for item in soup.find_all(["div", "li"], class_=re.compile(r"posting$|posting\s")):
+        title_el = (item.find(class_=re.compile("posting-name"))
+                    or item.find("h5") or item.find("h4") or item.find("h3"))
+        title = title_el.get_text(strip=True) if title_el else ""
+        link = item.find("a", href=True)
+        url = _abs_url(link["href"] if link else "", base_url)
+        loc_el = item.find(class_=re.compile("location|workplace"))
+        location = loc_el.get_text(strip=True) if loc_el else ""
+        if title:
+            jobs.append({"title": title, "location": location, "url": url, "source": "lever"})
+    return jobs
+
+
+def _parse_workday(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    jobs = []
+    for item in soup.find_all(attrs={"data-automation-id": re.compile("jobTitle|job-title")}):
+        title = item.get_text(strip=True)
+        parent_link = item.find_parent("a", href=True) or item.find("a", href=True)
+        url = _abs_url(parent_link["href"] if parent_link else "", base_url)
+        if title:
+            jobs.append({"title": title, "location": "", "url": url, "source": "workday"})
+    return jobs
+
+
+def _parse_ashby(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    jobs = []
+    for item in soup.find_all("a", href=re.compile(r"/jobs/")):
+        title = item.get_text(strip=True)
+        url = _abs_url(item["href"], base_url)
+        if title and len(title) < 100:
+            jobs.append({"title": title, "location": "", "url": url, "source": "ashby"})
+    return jobs
+
+
+def _parse_bamboohr(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    jobs = []
+    for item in soup.find_all(class_=re.compile("BambooHR-ATS-board-item|BambooHR-ATS-jobs-item")):
+        title_el = item.find(class_=re.compile("BambooHR-ATS-board-btn|BambooHR-ATS-job-title"))
+        title = title_el.get_text(strip=True) if title_el else ""
+        link = item.find("a", href=True)
+        url = _abs_url(link["href"] if link else "", base_url)
+        if title:
+            jobs.append({"title": title, "location": "", "url": url, "source": "bamboohr"})
+    return jobs
+
+
+def _parse_freshteam(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    jobs = []
+    for item in soup.find_all(class_=re.compile("job.?listing|job.?item|job.?card", re.I)):
+        title_el = item.find(["h2", "h3", "h4", "a"])
+        title = title_el.get_text(strip=True) if title_el else ""
+        link = item.find("a", href=True)
+        url = _abs_url(link["href"] if link else "", base_url)
+        if title and _JOB_KEYWORDS.search(title):
+            jobs.append({"title": title, "location": "", "url": url, "source": "freshteam"})
+    return jobs
+
+
+def _parse_smartrecruiters(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    jobs = []
+    for item in soup.find_all("li", class_=re.compile("job-item|opening-job")):
+        title_el = item.find(class_=re.compile("job-title|opening-job-title"))
+        title = title_el.get_text(strip=True) if title_el else ""
+        link = item.find("a", href=True)
+        url = _abs_url(link["href"] if link else "", base_url)
+        if title:
+            jobs.append({"title": title, "location": "", "url": url, "source": "smartrecruiters"})
+    return jobs
+
+
+def _parse_workable(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    """Parse Workable ATS job boards."""
+    jobs = []
+    for item in soup.find_all(["li", "article"], class_=re.compile(r"jobs-board__item|job\b")):
+        title_el = item.find(class_=re.compile(r"job-title|title")) or item.find(["h2", "h3", "h4"])
+        title = title_el.get_text(strip=True) if title_el else ""
+        link = item.find("a", href=True)
+        url = _abs_url(link["href"] if link else "", base_url)
+        loc_el = item.find(class_=re.compile(r"location|city"))
+        location = loc_el.get_text(strip=True) if loc_el else ""
+        if title:
+            jobs.append({"title": title, "location": location, "url": url, "source": "workable"})
+    if not jobs:
+        for span in soup.find_all("span", class_=re.compile("job-title")):
+            title = span.get_text(strip=True)
+            link = span.find_parent("a", href=True)
+            url = _abs_url(link["href"] if link else "", base_url)
+            if title:
+                jobs.append({"title": title, "location": "", "url": url, "source": "workable"})
+    return jobs
+
+
+def _parse_recruitee(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    """Parse Recruitee ATS job boards."""
+    jobs = []
+    for item in soup.find_all(["li", "div"], class_=re.compile(r"job-offers__item|offer")):
+        title_el = item.find(class_=re.compile(r"job-title|offer__title")) or item.find(["h2", "h3"])
+        title = title_el.get_text(strip=True) if title_el else ""
+        link = item.find("a", href=True)
+        url = _abs_url(link["href"] if link else "", base_url)
+        if title:
+            jobs.append({"title": title, "location": "", "url": url, "source": "recruitee"})
+    return jobs
+
+
+def _parse_teamtailor(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    """Parse Teamtailor ATS job boards."""
+    jobs = []
+    for item in soup.find_all(["li", "article"], class_=re.compile(r"\bjob\b|\bposition\b")):
+        title_el = item.find(class_=re.compile(r"title")) or item.find(["h2", "h3", "h4"])
+        title = title_el.get_text(strip=True) if title_el else ""
+        link = item.find("a", href=True)
+        url = _abs_url(link["href"] if link else "", base_url)
+        loc_el = item.find(class_=re.compile(r"location"))
+        location = loc_el.get_text(strip=True) if loc_el else ""
+        if title:
+            jobs.append({"title": title, "location": location, "url": url, "source": "teamtailor"})
+    for a in soup.find_all("a", attrs={"data-job": True}):
+        title = a.get_text(strip=True)
+        url = _abs_url(a.get("href", ""), base_url)
+        if title:
+            jobs.append({"title": title, "location": "", "url": url, "source": "teamtailor"})
+    return jobs
+
+
+def _parse_personio(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    """Parse Personio ATS job boards."""
+    jobs = []
+    for item in soup.find_all(class_=re.compile(r"job-widget-job-title|position-list-item")):
+        title = item.get_text(strip=True)
+        link = item.find_parent("a", href=True) or item.find("a", href=True)
+        url = _abs_url(link["href"] if link else "", base_url)
+        if title:
+            jobs.append({"title": title, "location": "", "url": url, "source": "personio"})
+    if not jobs:
+        for row in soup.find_all("tr"):
+            cells = row.find_all("td")
+            if cells:
+                title = cells[0].get_text(strip=True)
+                link = row.find("a", href=True)
+                url = _abs_url(link["href"] if link else "", base_url)
+                if title and _JOB_KEYWORDS.search(title):
+                    jobs.append({"title": title, "location": "", "url": url, "source": "personio"})
+    return jobs
+
+
+def _parse_icims(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    """Parse iCIMS ATS job boards."""
+    jobs = []
+    for item in soup.find_all(class_=re.compile(r"iCIMS_JobTitle|icims_JobTitle")):
+        title = item.get_text(strip=True)
+        link = item.find("a", href=True) or item.find_parent("a", href=True)
+        url = _abs_url(link["href"] if link else "", base_url)
+        if title:
+            jobs.append({"title": title, "location": "", "url": url, "source": "icims"})
+    if not jobs:
+        for row in soup.find_all("tr", class_=re.compile(r"iCIMS_JobsTable")):
+            link = row.find("a", href=True)
+            title = link.get_text(strip=True) if link else ""
+            url = _abs_url(link["href"] if link else "", base_url)
+            if title:
+                jobs.append({"title": title, "location": "", "url": url, "source": "icims"})
+    return jobs
+
+
+def _parse_breezyhr(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    """Parse Breezy HR ATS job boards."""
+    jobs = []
+    for item in soup.find_all(class_=re.compile(r"\bposition\b")):
+        title_el = item.find(["h2", "h3"]) or item.find(class_=re.compile(r"title|name"))
+        title = title_el.get_text(strip=True) if title_el else ""
+        link = item.find("a", href=True)
+        url = _abs_url(link["href"] if link else "", base_url)
+        if title:
+            jobs.append({"title": title, "location": "", "url": url, "source": "breezyhr"})
+    return jobs
+
+
+def _parse_jazzhr(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    """Parse JazzHR ATS job boards."""
+    jobs = []
+    for item in soup.find_all(["div", "li"], class_=re.compile(r"job.?listing|resumator.?job")):
+        title_el = item.find(["h3", "h4", "a"])
+        title = title_el.get_text(strip=True) if title_el else ""
+        link = item.find("a", href=True)
+        url = _abs_url(link["href"] if link else "", base_url)
+        if title:
+            jobs.append({"title": title, "location": "", "url": url, "source": "jazzhr"})
+    return jobs
+
+
+# ── Generic extractor ─────────────────────────────────────────────────────────
+
+def _extract_jobs_static(html: str, base_url: str) -> list[dict]:
+    """Extract job listings from static HTML with heuristics."""
+    soup = BeautifulSoup(html, "lxml")
+
+    # Remove noisy structural elements
+    for tag in soup.find_all(["nav", "footer", "header", "script", "style",
+                               "noscript", "aside", "form"]):
+        tag.decompose()
+
+    # Detect ATS platform from URL
+    platform = _detect_ats_platform(base_url)
+
+    # ATS-specific parsers by detected platform
+    _ATS_PARSERS = {
+        "greenhouse":      _parse_greenhouse,
+        "lever":           _parse_lever,
+        "workday":         _parse_workday,
+        "ashby":           _parse_ashby,
+        "bamboohr":        _parse_bamboohr,
+        "freshteam":       _parse_freshteam,
+        "smartrecruiters": _parse_smartrecruiters,
+        "workable":        _parse_workable,
+        "recruitee":       _parse_recruitee,
+        "teamtailor":      _parse_teamtailor,
+        "personio":        _parse_personio,
+        "icims":           _parse_icims,
+        "breezyhr":        _parse_breezyhr,
+        "jazzhr":          _parse_jazzhr,
+    }
+
+    if platform and platform in _ATS_PARSERS:
+        jobs = _ATS_PARSERS[platform](soup, base_url)
+        if jobs:
+            return jobs
+
+    # Try ALL ATS parsers (catches embedded widgets on company career pages)
+    for name, parser_fn in _ATS_PARSERS.items():
+        try:
+            jobs = parser_fn(soup, base_url)
+            if jobs:
+                log.info(f"ATS widget detected via {name} parser")
+                return jobs
+        except Exception:
+            pass
+
+    # Try JSON-LD job postings (most reliable generic method)
+    jobs = _extract_json_ld_jobs(soup, base_url)
+    if jobs:
+        return jobs
+
+    # Generic: find elements with job-like class names
+    jobs = _extract_by_class_heuristic(soup, base_url)
+    if jobs:
+        return jobs
+
+    # Final fallback: anchor-based extraction
+    return _extract_job_links(soup, base_url)
+
+
+def _extract_json_ld_jobs(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    """Extract JobPosting from JSON-LD structured data — very reliable."""
+    jobs = []
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(script.string or "")
+            if isinstance(data, list):
+                items = data
+            elif isinstance(data, dict) and data.get("@graph"):
+                items = data["@graph"]
+            else:
+                items = [data]
+            for item in items:
+                if item.get("@type") in ("JobPosting", "jobPosting"):
+                    title = item.get("title") or item.get("name", "")
+                    location_data = item.get("jobLocation", {})
+                    if isinstance(location_data, list):
+                        location_data = location_data[0] if location_data else {}
+                    if isinstance(location_data, dict):
+                        addr = location_data.get("address", {})
+                        location = addr.get("addressLocality", "") if isinstance(addr, dict) else str(addr)
+                    else:
+                        location = ""
+                    url = item.get("url", base_url)
+                    if title:
+                        jobs.append({"title": title, "location": location, "url": url, "source": "json_ld"})
+        except Exception:
+            pass
+    return jobs
+
+
+def _extract_by_class_heuristic(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    """Find elements with class names suggesting job listings."""
+    JOB_CLASS = re.compile(
+        r"job.?(card|item|listing|post|row|entry|result|position|opening|vacancy|role)|"
+        r"(position|opening|vacancy|role).?(card|item|list|row|entry)",
+        re.IGNORECASE,
+    )
+    jobs = []
+    seen = set()
+    for elem in soup.find_all(True, class_=JOB_CLASS, limit=300):
+        title_el = (elem.find(["h1", "h2", "h3", "h4", "h5"]) or
+                    elem.find("a", href=True) or
+                    elem.find("strong") or
+                    elem.find("b"))
+        title = title_el.get_text(separator=" ", strip=True) if title_el else ""
+        title = re.sub(r"\s+", " ", title).strip()
+
+        if not title or len(title) > 120 or len(title) < 4:
+            continue
+        if _NOISE_PATTERNS.match(title):   # exact match only
+            continue
+        if not _JOB_KEYWORDS.search(title):
+            continue
+        if title in seen:
+            continue
+        seen.add(title)
+
+        link = elem.find("a", href=True)
+        url = _abs_url(link["href"] if link else "", base_url)
+
+        loc_el = elem.find(class_=re.compile(r"location|city|place|region", re.I))
+        location = loc_el.get_text(strip=True)[:80] if loc_el else ""
+
+        jobs.append({"title": title, "location": location, "url": url, "source": "career_page"})
+
+    return jobs[:50]
+
+
+def _extract_job_links(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    """Extract job links by finding anchors whose text looks like a job title.
+    URL filter is relaxed — only block links pointing to unrelated external domains."""
+    jobs = []
+    seen = set()
+    base_domain = _get_domain(base_url)
+
+    for a in soup.find_all("a", href=True, limit=500):
+        title = a.get_text(separator=" ", strip=True)
+        title = re.sub(r"\s+", " ", title).strip()
+
+        if not title or len(title) > 100 or len(title) < 5:
+            continue
+        if not _JOB_KEYWORDS.search(title):
+            continue
+        if _NOISE_PATTERNS.match(title):
+            continue
+        if title in seen:
+            continue
+        seen.add(title)
+
+        url = _abs_url(a["href"], base_url)
+
+        # Allow same-domain links freely; for other domains require job-related URL
+        if url:
+            url_domain = _get_domain(url)
+            known_ats = any(p.search(url) for p in _ATS_URL_PATTERNS.values())
+            if not known_ats and url_domain and url_domain != base_domain:
+                if not any(kw in url.lower() for kw in [
+                    "job", "career", "opening", "position", "vacancy",
+                    "role", "posting", "work", "apply", "hiring", "recruit"
+                ]):
+                    continue
+
+        jobs.append({"title": title, "location": "", "url": url, "source": "career_page"})
+
+    return jobs[:30]
+
+
+# ── SPA detection ─────────────────────────────────────────────────────────────
+
+def _looks_like_spa(html: str) -> bool:
+    """
+    Detect if a page is a JS SPA needing Playwright.
+    Threshold raised from 300 → 800 chars; also detects by very few links.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    body_text = soup.get_text(separator=" ", strip=True)
+    root_div = soup.find("div", id=re.compile(r"^(root|app|__next|__nuxt|ember|gatsby-focus-wrapper)$"))
+    links = soup.find_all("a", href=True)
+
+    if len(body_text) < 800 and root_div is not None:
+        return True
+    if len(body_text) < 500 and len(links) < 5:
+        return True
+    return False
+
+
+def _scrape_with_playwright(url: str, wait_extra: int = 5) -> list[dict]:
+    """Render JS-heavy SPA pages with Playwright and extract jobs."""
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True)
+            page = browser.new_page(user_agent=_HEADERS["User-Agent"])
+            try:
+                page.goto(url, wait_until="networkidle", timeout=30_000)
+            except Exception:
+                try:
+                    page.goto(url, wait_until="domcontentloaded", timeout=20_000)
+                except Exception:
+                    log.warning(f"Playwright could not load {url}")
+                    browser.close()
+                    return []
+
+            # Wait for common job list selectors to appear
+            job_selectors = [
+                ".job-card", ".job-listing", ".opening", ".position",
+                "[class*='job']", "[class*='career']", "[class*='opening']",
+                "li[class*='job']", "article[class*='job']",
+            ]
+            for sel in job_selectors:
+                try:
+                    page.wait_for_selector(sel, timeout=3_000)
+                    break
+                except Exception:
+                    pass
+
+            # Multiple scroll passes to trigger lazy loading
+            for _ in range(3):
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                time.sleep(2)
+
+            time.sleep(wait_extra)
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            time.sleep(2)
+
+            html = page.content()
+            browser.close()
+
+        jobs = _extract_jobs_static(html, url)
+        log.info(f"Playwright extracted {len(jobs)} jobs from {url}")
+        return jobs
+    except Exception as e:
+        log.warning(f"Playwright fallback failed for {url}: {e}")
+        return []
+
+
+# ── Main entry point ──────────────────────────────────────────────────────────
+
+def scrape_career_page(url: str, delay: tuple = RATE_LIMIT_DELAY) -> list[dict]:
+    """
+    Scrape a company career page for job listings.
+    Returns list of {title, location, url, source}.
+    """
+    if not url:
+        return []
+
+    time.sleep(random.uniform(*delay))
+    domain = _get_domain(url)
+
+    if not _check_robots(url):
+        log.info(f"robots.txt disallows scraping {url}")
+        return []
+
+    if domain in _SPA_DOMAINS:
+        return _scrape_with_playwright(url)
+
+    try:
+        with httpx.Client(follow_redirects=True, timeout=20, headers=_HEADERS) as client:
+            resp = client.get(url)
+            resp.raise_for_status()
+            html = resp.text
+            final_url = str(resp.url)  # URL after redirects
+    except httpx.HTTPStatusError as e:
+        log.warning(f"HTTP {e.response.status_code} for {url}")
+        return []
+    except Exception as e:
+        log.warning(f"Failed to fetch {url}: {e}")
+        return []
+
+    # Log if we were redirected to an ATS platform
+    if final_url != url:
+        log.info(f"Redirected: {url} → {final_url}")
+        platform = _detect_ats_platform(final_url)
+        if platform:
+            log.info(f"Detected ATS platform via redirect: {platform}")
+
+    if _looks_like_spa(html):
+        log.info(f"{url} looks like a SPA — switching to Playwright")
+        _SPA_DOMAINS.add(domain)
+        return _scrape_with_playwright(final_url)
+
+    jobs = _extract_jobs_static(html, final_url)
+    log.info(f"Found {len(jobs)} job(s) at {url}")
+    return jobs

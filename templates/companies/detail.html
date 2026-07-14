@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+{% block title %}{{ company.name }}{% endblock %}
+
+{% block content %}
+<!-- ── Company Header ──────────────────────────────────────────────────────── -->
+<div class="company-header-card card mb-4">
+  <div class="card-body">
+    <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
+      <div>
+        <h1 class="company-header-name">{{ company.name }}</h1>
+        <div class="company-header-meta d-flex flex-wrap gap-2 mt-2">
+          {% if company.industry %}
+          <span class="badge bg-secondary">{{ company.industry }}</span>
+          {% endif %}
+          {% if company.location %}
+          <span class="text-muted small"><i class="bi bi-geo-alt me-1"></i>{{ company.location }}</span>
+          {% endif %}
+          {% if company.company_size %}
+          <span class="text-muted small"><i class="bi bi-people me-1"></i>{{ company.company_size }}</span>
+          {% endif %}
+        </div>
+        <div class="company-links d-flex flex-wrap gap-3 mt-3">
+          {% if company.website %}
+          <a href="{{ company.website }}" target="_blank" class="company-link">
+            <i class="bi bi-globe me-1"></i>Website
+          </a>
+          {% endif %}
+          {% if company.linkedin_url %}
+          <a href="{{ company.linkedin_url }}" target="_blank" class="company-link">
+            <i class="bi bi-linkedin me-1"></i>LinkedIn
+          </a>
+          {% endif %}
+          {% if company.career_page_url %}
+          <a href="{{ company.career_page_url }}" target="_blank" class="company-link">
+            <i class="bi bi-briefcase me-1"></i>Careers
+          </a>
+          {% endif %}
+        </div>
+      </div>
+      <div class="text-end">
+        {% if company.match_score is not none %}
+        <div class="score-badge-lg score-{{ company.match_score_label() }}">
+          {{ company.match_score }}<small>/100</small>
+        </div>
+        <div class="text-muted small mt-1">Match Score</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Status Stepper -->
+    <div class="status-stepper mt-4">
+      {% set stages = ['not_contacted', 'emailed', 'replied', 'interviewing', 'offered'] %}
+      {% set current_idx = stages.index(company.contact_status) if company.contact_status in stages else 0 %}
+      {% for stage in stages %}
+      {% set stage_idx = loop.index0 %}
+      <div class="stepper-item {{ 'active' if stage_idx == current_idx else 'completed' if stage_idx < current_idx else '' }}">
+        <div class="stepper-dot">
+          {% if stage_idx < current_idx %}
+          <i class="bi bi-check-lg"></i>
+          {% else %}
+          {{ loop.index }}
+          {% endif %}
+        </div>
+        <div class="stepper-label">{{ stage.replace('_', ' ').title() }}</div>
+      </div>
+      {% if not loop.last %}<div class="stepper-line {{ 'completed' if stage_idx < current_idx }}"></div>{% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Main Grid ──────────────────────────────────────────────────────────── -->
+<div class="row g-4">
+
+  <!-- Left: Timeline -->
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <h5 class="card-title mb-0"><i class="bi bi-clock-history me-2"></i>Activity Timeline</h5>
+        <span class="badge bg-secondary">{{ timeline|length }} events</span>
+      </div>
+      <div class="card-body p-0">
+        {% if timeline %}
+        <div class="timeline">
+          {% for event in timeline %}
+          <div class="timeline-item timeline-{{ event.type }}">
+            <div class="timeline-icon">
+              {% if event.icon == 'linkedin' %}<i class="bi bi-linkedin"></i>
+              {% elif event.icon == 'briefcase' %}<i class="bi bi-briefcase-fill"></i>
+              {% elif event.icon == 'bell' %}<i class="bi bi-bell-fill"></i>
+              {% elif event.icon == 'search' %}<i class="bi bi-search"></i>
+              {% else %}<i class="bi bi-circle-fill"></i>{% endif %}
+            </div>
+            <div class="timeline-content">
+              <div class="timeline-header">
+                <span class="timeline-summary">{{ event.summary }}</span>
+                <span class="timeline-time text-muted small">{{ event.at | reltime }}</span>
+              </div>
+              {% if event.detail %}
+              <div class="timeline-detail text-muted small">{{ event.detail }}</div>
+              {% endif %}
+              {% if event.url %}
+              <a href="{{ event.url }}" target="_blank" class="btn btn-xs btn-outline-info mt-1">
+                <i class="bi bi-box-arrow-up-right me-1"></i>Open
+              </a>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state py-5">
+          <i class="bi bi-clock-history fs-2 text-muted"></i>
+          <p class="text-muted mt-2">No activity yet. Use the Quick Actions to get started.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Quick Actions + Sidebar -->
+  <div class="col-lg-4">
+
+    <!-- Quick Actions -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <h6 class="card-title mb-0"><i class="bi bi-lightning-fill me-2 text-warning"></i>Quick Actions</h6>
+      </div>
+      <div class="card-body d-grid gap-2">
+        <button class="btn btn-primary btn-sm" id="logEmailBtn">
+          <i class="bi bi-envelope me-1"></i> Log HR Email
+        </button>
+        <button class="btn btn-outline-warning btn-sm" id="scheduleFollowupBtn">
+          <i class="bi bi-bell me-1"></i> Schedule Follow-up
+        </button>
+        <button class="btn btn-outline-info btn-sm" id="scanJobsBtn">
+          <i class="bi bi-search me-1"></i> Scan Jobs
+        </button>
+
+        <!-- Edit status -->
+        <form method="POST" action="{{ url_for('companies.update_company', cid=company.id) }}" class="mt-2">
+          <label class="form-label small fw-semibold text-muted">Update Status</label>
+          <div class="input-group input-group-sm">
+            <select class="form-select form-select-sm" name="contact_status">
+              {% for s in ['not_contacted','emailed','replied','interviewing','offered','rejected','cold'] %}
+              <option value="{{ s }}" {{ 'selected' if company.contact_status == s }}>
+                {{ s.replace('_', ' ').title() }}
+              </option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-outline-secondary" type="submit">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Open Jobs -->
+    {% if open_jobs %}
+    <div class="card mb-4">
+      <div class="card-header">
+        <h6 class="card-title mb-0">
+          <i class="bi bi-briefcase me-2 text-info"></i>Open Roles
+          <span class="badge bg-info text-dark ms-1">{{ open_jobs|length }}</span>
+        </h6>
+      </div>
+      <div class="card-body p-0">
+        <ul class="action-list">
+          {% for job in open_jobs %}
+          <li class="action-item">
+            <div class="action-body">
+              <div class="fw-medium small">{{ job.title }}</div>
+              <div class="text-muted small">{{ job.location or 'Remote/Unspecified' }}</div>
+            </div>
+            {% if job.url %}
+            <a href="{{ job.url }}" target="_blank" class="btn btn-xs btn-outline-info">Apply</a>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Pending Follow-ups -->
+    {% if pending_followups %}
+    <div class="card mb-4">
+      <div class="card-header">
+        <h6 class="card-title mb-0">
+          <i class="bi bi-bell me-2 text-warning"></i>Pending Follow-ups
+        </h6>
+      </div>
+      <div class="card-body p-0">
+        <ul class="action-list">
+          {% for fu in pending_followups %}
+          <li class="action-item">
+            <div class="action-body">
+              <div class="small">Due: <strong>{{ fu.due_on }}</strong></div>
+              <div class="text-muted small">{{ fu.notes or 'No note' }}</div>
+            </div>
+            <button class="btn btn-xs btn-outline-success mark-done-btn" data-fuid="{{ fu.id }}">
+              ✓
+            </button>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Phone & Call Status card -->
+    <div class="card mb-3">
+      <div class="card-header">
+        <h6 class="card-title mb-0"><i class="bi bi-telephone me-2"></i>Phone & Call</h6>
+      </div>
+      <div class="card-body">
+        <!-- Phone Number -->
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Phone Number</label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text"><i class="bi bi-phone"></i></span>
+            <input type="tel" class="form-control" id="phoneInput"
+                   placeholder="e.g. +91 98765 43210"
+                   value="{{ company.phone_number or '' }}">
+            <button class="btn btn-outline-primary" id="savePhoneBtn" type="button">Save</button>
+          </div>
+          <div class="form-text" id="phoneSaveMsg"></div>
+        </div>
+
+        <!-- Call Status Toggle -->
+        <div>
+          <label class="form-label small fw-semibold d-block">Call Status</label>
+          {% if company.call_status == 'called' %}
+          <button class="btn btn-sm btn-success w-100" id="callToggleBtn"
+                  data-cid="{{ company.id }}" data-status="called">
+            <i class="bi bi-telephone-check-fill me-1"></i> Called ✓ — Click to undo
+          </button>
+          {% else %}
+          <button class="btn btn-sm btn-outline-danger w-100" id="callToggleBtn"
+                  data-cid="{{ company.id }}" data-status="not_called">
+            <i class="bi bi-telephone-x me-1"></i> Not Called — Click to mark as called
+          </button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Company Info (edit form) -->
+    <div class="card">
+      <div class="card-header">
+        <h6 class="card-title mb-0"><i class="bi bi-pencil me-2"></i>Edit Company Info</h6>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('companies.update_company', cid=company.id) }}">
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">HR Email</label>
+            <input type="text" class="form-control form-control-sm" name="hr_email"
+                   value="{{ company.hr_email or '' }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Career Page URL</label>
+            <input type="text" class="form-control form-control-sm" name="career_page_url"
+                   value="{{ company.career_page_url or '' }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Notes</label>
+            <textarea class="form-control form-control-sm" name="notes" rows="3">{{ company.notes or '' }}</textarea>
+          </div>
+          <button type="submit" class="btn btn-sm btn-primary w-100">Save Changes</button>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Log Email Modal -->
+<div class="modal fade" id="logEmailModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-envelope me-2"></i>Log HR Email — {{ company.name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('companies.log_email', cid=company.id) }}">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Recipient Email</label>
+            <input type="email" class="form-control" name="recipient_email"
+                   value="{{ company.hr_email or '' }}" placeholder="hr@company.com">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Subject</label>
+            <input type="text" class="form-control" name="subject" placeholder="Application for Software Engineer">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Body Excerpt (first 200 chars)</label>
+            <textarea class="form-control" name="body_excerpt" rows="3"></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Date Sent</label>
+            <input type="date" class="form-control" name="sent_at" id="detailEmailDate">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-check2 me-1"></i> Log Email</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Schedule Follow-up Modal -->
+<div class="modal fade" id="followupModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-bell me-2"></i>Schedule Follow-up</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('companies.schedule_followup', cid=company.id) }}">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Due Date</label>
+            <input type="date" class="form-control" name="due_on" id="followupDate">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Notes</label>
+            <textarea class="form-control" name="notes" rows="2" placeholder="What to follow up on…"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning"><i class="bi bi-bell me-1"></i> Schedule</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('detailEmailDate').valueAsDate = new Date();
+// Default follow-up = 5 days from now
+const fuDate = new Date();
+fuDate.setDate(fuDate.getDate() + 5);
+document.getElementById('followupDate').valueAsDate = fuDate;
+
+const logEmailModal    = new bootstrap.Modal(document.getElementById('logEmailModal'));
+const followupModal    = new bootstrap.Modal(document.getElementById('followupModal'));
+
+document.getElementById('logEmailBtn').addEventListener('click', () => logEmailModal.show());
+document.getElementById('scheduleFollowupBtn').addEventListener('click', () => followupModal.show());
+
+// Scan jobs
+document.getElementById('scanJobsBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('scanJobsBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Scanning…';
+  try {
+    const res = await fetch(`/scrape/jobs/{{ company.id }}`, { method: 'POST' });
+    const data = await res.json();
+    alert(`Found ${data.openings_found} openings (${data.new_count} new). Refresh to see updates.`);
+    location.reload();
+  } catch(e) {
+    alert('Scan failed.');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-search me-1"></i> Scan Jobs';
+  }
+});
+
+// Mark done buttons
+document.querySelectorAll('.mark-done-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const fuid = btn.dataset.fuid;
+    const res = await fetch(`/companies/follow-ups/${fuid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'done' }),
+    });
+    if (res.ok) {
+      btn.closest('.action-item').remove();
+    }
+  });
+});
+
+// Save phone number
+const savePhoneBtn = document.getElementById('savePhoneBtn');
+if (savePhoneBtn) {
+  savePhoneBtn.addEventListener('click', async () => {
+    const cid = document.getElementById('callToggleBtn').dataset.cid;
+    const phone = document.getElementById('phoneInput').value.trim();
+    const msg = document.getElementById('phoneSaveMsg');
+    savePhoneBtn.disabled = true;
+    savePhoneBtn.textContent = '…';
+    try {
+      const res = await fetch(`/companies/${cid}/save-phone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ phone_number: phone }),
+      });
+      const d = await res.json();
+      msg.textContent = d.success ? '✓ Saved!' : 'Save failed.';
+      msg.className = d.success ? 'form-text text-success' : 'form-text text-danger';
+    } catch(e) {
+      msg.textContent = 'Error saving.';
+      msg.className = 'form-text text-danger';
+    } finally {
+      savePhoneBtn.disabled = false;
+      savePhoneBtn.textContent = 'Save';
+      setTimeout(() => { msg.textContent = ''; }, 3000);
+    }
+  });
+}
+
+// Call status toggle on detail page
+const callToggleBtn = document.getElementById('callToggleBtn');
+if (callToggleBtn) {
+  callToggleBtn.addEventListener('click', async () => {
+    const cid = callToggleBtn.dataset.cid;
+    callToggleBtn.disabled = true;
+    try {
+      const res = await fetch(`/companies/${cid}/toggle-call`, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      });
+      const d = await res.json();
+      if (d.call_status === 'called') {
+        callToggleBtn.className = 'btn btn-sm btn-success w-100';
+        callToggleBtn.innerHTML = '<i class="bi bi-telephone-check-fill me-1"></i> Called ✓ — Click to undo';
+        callToggleBtn.dataset.status = 'called';
+      } else {
+        callToggleBtn.className = 'btn btn-sm btn-outline-danger w-100';
+        callToggleBtn.innerHTML = '<i class="bi bi-telephone-x me-1"></i> Not Called — Click to mark as called';
+        callToggleBtn.dataset.status = 'not_called';
+      }
+    } finally {
+      callToggleBtn.disabled = false;
+    }
+  });
+}
+</script>
+{% endblock %}

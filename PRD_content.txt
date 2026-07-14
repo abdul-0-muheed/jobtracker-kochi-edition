@@ -1,0 +1,460 @@
+
+Table of Contents
+Note: Right-click the table of contents and select Update Field to refresh page numbers after opening the document.
+
+1. Executive Summary
+Job seeking today is a multi-channel, high-volume activity. A single seeker interacts with 200-500 companies across LinkedIn connection requests, HR cold-emails, InMail messages, career page applications, and follow-up reminders. The current workflow is fragmented: company shortlists live in spreadsheets, LinkedIn activity lives on LinkedIn, HR correspondence lives in Gmail, and follow-up dates live in the seeker's memory. This fragmentation causes missed follow-ups, duplicate outreach, lost context on which companies were already contacted, and an inability to measure funnel conversion (how many contacted companies actually replied or scheduled interviews).
+This Product Requirements Document specifies a local-first, single-user web application that consolidates the entire job-seeking workflow into one dashboard. The application ingests a pre-curated company spreadsheet (the Kochi software companies xlsx with 302 rows and 19 columns including LinkedIn URLs, career pages, HR emails, and match scores), authenticates the user against LinkedIn using a hybrid approach (official OAuth2 for identity + Playwright-driven browser session for activity scraping), and continuously synchronizes LinkedIn events (connection requests sent, messages exchanged, profile views) back into the local database.
+On top of this unified data layer, the application surfaces five operational capabilities: (1) job opening detection from both the company career page and the LinkedIn company jobs tab, (2) HR email tracking with one-click logging of emails sent, (3) follow-up scheduling with configurable reminder cadence, (4) LinkedIn activity tracking that auto-records every connection request and message the user sends to employees of a tracked company, and (5) a dashboard that visualizes the full funnel from companies identified to applications submitted to replies received to interviews scheduled to offers extended.
+The application is built on a Python 3.11 + Flask + SQLite stack running entirely on the user's local machine. No data leaves the device. LinkedIn scraping is rate-limited and operates within a real logged-in browser session to minimize ban risk. The MVP is scoped to ship in eight weeks across three phases: company upload and manual tracking (Weeks 1-3), LinkedIn hybrid sync and job detection (Weeks 4-6), and HR email logging, follow-ups, and analytics (Weeks 7-8). After MVP, optional Phase 4 will explore a browser extension, AI-assisted cold-email drafting, and calendar integration.
+2. Problem Statement & Motivation
+The current job-seeking workflow suffers from five concrete pain points that this product is designed to eliminate. Each pain point below is drawn from real, repeated friction observed during an active job search across the Kochi software company ecosystem (302 companies, sourced from Infopark official profiles).
+2.1 Pain Point: Data Fragmentation Across Channels
+Company shortlists live in an Excel spreadsheet with 19 columns of metadata (LinkedIn URL, career page, HR email, tech stack, match score). LinkedIn activity (connection requests, messages, profile views) lives inside the LinkedIn product UI and is not exportable. HR cold-emails sent from Gmail have no structured record. Follow-up dates exist only in the seeker's head or in scattered calendar reminders. There is no single source of truth that answers the question: "For company X, what have I done so far and what should I do next?"
+2.2 Pain Point: Missed Follow-Ups
+Industry data suggests that 60-70% of cold HR emails receive a response only after a follow-up. Without a structured reminder system tied to each outreach event, follow-ups are forgotten. The current spreadsheet has no native concept of follow-up cadence or due-date tracking.
+2.3 Pain Point: No Visibility Into LinkedIn Funnel
+LinkedIn does not expose a per-company view of "connection requests I sent to employees of company X" or "messages I exchanged with company X employees." The seeker must manually scroll through their LinkedIn My Network page and match names to companies, which is infeasible at 302-company scale.
+2.4 Pain Point: Job Opening Detection Is Manual
+Each of the 302 companies has a career page URL and a LinkedIn company page. Checking these manually for new openings is a daily chore that consumes 30-60 minutes. There is no automated delta detection ("new job posted since last check").
+2.5 Pain Point: No Funnel Analytics
+Without consolidated data, the seeker cannot answer strategic questions: What is my response rate? Which industries are converting best? Am I spending too much time on low-match-score companies? A dashboard with funnel visualization and basic cohort analysis is required.
+The motivation for this product is to replace five disconnected tools (spreadsheet, LinkedIn, Gmail, calendar, memory) with one local-first dashboard that automates data collection, centralizes tracking, and surfaces actionable insights. The product is explicitly personal-use-only and runs on localhost to keep the data private and the LinkedIn scraping within ethical bounds.
+3. Goals & Non-Goals
+This section establishes explicit boundaries for what the MVP and subsequent phases will and will not deliver. Goals are scoped to be achievable within the eight-week timeline; non-goals are explicitly deferred to later phases or rejected as out-of-scope for a personal-use tool.
+Table 1: Goals vs Non-Goals
+These boundaries are intentionally tight. A solo-built personal tool must avoid feature creep that would compromise the eight-week delivery timeline. Each non-goal listed above represents a temptation that was considered and rejected during scoping.
+4. Target User & Personas
+Because this is a single-user, personal-use application, the primary persona is the builder himself. The persona description below captures the context, motivations, and constraints that drive every product decision in this document.
+4.1 Primary Persona: Adithya - Active Job Seeker
+Adithya is a software developer in Kochi, Kerala, with 2-4 years of experience, actively seeking a new role. He maintains a curated spreadsheet of 302 Kochi software companies with rich metadata (LinkedIn URLs, career pages, HR emails, tech stack, match scores). He is comfortable with Python and basic web development, and he wants a tool that respects his data privacy by keeping everything local.
+His daily job-seeking workflow involves: opening the spreadsheet to pick 5-10 target companies, visiting each company's LinkedIn page to identify employees to connect with, sending connection requests with personalized notes, checking the company career page for open roles, drafting and sending HR cold-emails, and (in theory) following up after 5-7 days. In practice, follow-ups are skipped because there is no reminder system. He has no visibility into aggregate metrics like response rate or funnel conversion.
+Frustrations: He has emailed HR at 60+ companies but cannot quickly recall which ones he has followed up with. He has sent 200+ LinkedIn connection requests but cannot filter them by employer. He spends 30-60 minutes daily manually re-checking career pages for new postings. He has no idea whether his outreach is actually working.
+Technical context: Adithya runs macOS or Windows, is comfortable installing Python via venv, and has a LinkedIn Premium account. He is willing to authenticate LinkedIn inside the app once and accept that the app will use his session to scrape data. He values a clean, fast UI over feature richness.
+5. User Stories & Journeys
+This section captures the user's intent in story format and then traces three representative end-to-end journeys through the application. Stories are written in the standard "As a user, I want to X so that Y" format and grouped by feature area.
+5.1 User Stories
+Onboarding & Data Import
+As a user, I want to upload my Kochi companies xlsx so that all 302 companies appear in the app with their metadata pre-populated.
+As a user, I want the app to auto-detect the spreadsheet columns so that I do not have to manually map each of the 19 columns.
+As a user, I want to log into LinkedIn inside the app so that the app can sync my activity on my behalf.
+Company Management
+As a user, I want to view all companies in a filterable, sortable table so that I can pick my next targets by match score, industry, or tech stack.
+As a user, I want to open a company detail page that shows everything I have done with that company in one timeline so that I never lose context.
+As a user, I want to manually edit or augment any company field so that I can correct outdated information.
+LinkedIn Sync & Tracking
+As a user, I want the app to sync my sent LinkedIn connection requests and map them to the tracked companies so that I can see who at each company I have already approached.
+As a user, I want the app to sync my LinkedIn messages with employees of tracked companies so that the conversation history appears in the company timeline.
+As a user, I want to trigger a manual sync at any time so that I can refresh data on demand before a focused outreach session.
+Job Opening Detection
+As a user, I want the app to detect new job openings on each company's career page so that I am alerted when a relevant role opens up.
+As a user, I want the app to also check LinkedIn jobs tab for each company so that I capture openings posted only on LinkedIn.
+As a user, I want new openings to appear as cards in the dashboard with a direct apply link so that I can act immediately.
+HR Email & Follow-Up Tracking
+As a user, I want to log that I sent an HR email to a company with subject, body excerpt, and date so that I have a record in the company timeline.
+As a user, I want the app to auto-suggest a follow-up date 5 days after the email so that I do not forget.
+As a user, I want to mark a follow-up as done, snoozed, or skipped so that the reminder system stays accurate.
+Dashboard & Analytics
+As a user, I want a funnel chart showing companies -> contacted -> replied -> interviewed -> offered so that I can see conversion rates at a glance.
+As a user, I want a daily reminder digest of follow-ups due and pending actions so that I start each day with a clear plan.
+5.2 Journey 1: Onboarding (First Run)
+Adithya launches the app for the first time. The dashboard is empty with a prominent CTA: "Upload your company spreadsheet." He drags the kochi_software_companies.xlsx file onto the upload zone. The app parses the file, auto-detects the 19 columns, and shows a preview table with 302 rows. He clicks "Confirm Import" and the app inserts all rows into the companies table. The dashboard now shows 302 companies, 0 contacted, 0 follow-ups due. Next, the app prompts: "Connect LinkedIn to enable activity sync." He clicks the button, a Playwright-controlled Chromium window opens, he logs in normally (with 2FA if needed), and after successful login the app saves the session cookie to an encrypted local file. The first sync runs immediately and pulls his last 50 sent connection requests, matching 12 to tracked companies. Those 12 companies now show a "LinkedIn: connected" status in the timeline.
+5.3 Journey 2: Daily Job-Seeking Workflow
+Adithya opens the app at 9 AM. The dashboard shows: 3 follow-ups due today, 2 new job openings detected overnight, and a reminder that he has not contacted any company in the past 48 hours. He clicks the first follow-up reminder, which opens the company detail page showing the original HR email sent 5 days ago plus a suggested follow-up template. He marks the follow-up as done after sending the email externally in Gmail, then logs back in to the app and clicks "Log follow-up sent." He repeats for the other two. He then reviews the 2 new job openings: one matches his profile (React + Python, match score 92) and he clicks through to apply. The application is logged automatically with status "Applied." He picks 5 new companies from the high-match-score list, opens their LinkedIn pages inside the app's embedded browser, and sends connection requests to 2-3 employees each. The app captures each request and adds it to the respective company timelines.
+5.4 Journey 3: Weekly Review
+On Sunday evening, Adithya opens the dashboard analytics tab. The funnel chart shows: 302 companies identified, 87 contacted (28.8%), 23 replied (7.6%), 8 interviewed (2.6%), 1 offer (0.3%). A second chart breaks down replies by industry: SaaS companies replied at 12%, AI/ML at 9%, FinTech at 4%. He filters the company list by status = "No reply after follow-up" and sees 41 companies. He bulk-tags them as "cold" and adds a calendar reminder to revisit them in 30 days. He exports the full dataset as CSV for backup. The whole review takes 15 minutes; previously it would have been impossible because the data did not exist in one place.
+6. Functional Requirements
+This section specifies the seven core functional areas of the MVP. Each subsection covers feature description, inputs and outputs, acceptance criteria, and notable edge cases. The level of detail is sufficient for a solo developer (the builder) to implement without further design discussion.
+6.1 Company Upload & Management
+The application must accept a .xlsx file upload and parse it into the companies table. The expected schema is the 19-column Kochi companies format (see Appendix A for full column mapping). The parser must handle missing values gracefully ("Unknown" cells in the source spreadsheet must be preserved as NULL in the database, not as the literal string "Unknown").
+Re-uploads must deduplicate by Company Name (case-insensitive trim). When a duplicate is detected, the user is prompted to either skip the duplicate, overwrite the existing record, or merge (prefer non-empty fields from either source). A bulk delete and per-row edit must be available. The companies list view must support filter-by (industry, match score range, hiring status, contact status) and sort-by (match score desc, name asc, last activity desc).
+Acceptance criteria: (1) Uploading the 302-row kochi_software_companies.xlsx imports all rows in under 5 seconds. (2) Re-uploading the same file produces 0 duplicates and 0 data loss. (3) Filtering by industry = "AI / Machine Learning" returns the correct subset. (4) Editing a company's HR email persists across app restarts.
+6.2 LinkedIn Authentication (Hybrid Approach)
+The application uses a hybrid LinkedIn integration. The official LinkedIn OAuth2 API is used to authenticate the user's identity and obtain a long-lived access token (scopes: r_liteprofile, r_emailaddress). This satisfies the "login with LinkedIn" requirement and provides a verified identity. However, the official API does not expose the data the application needs (sent connection requests, message history, per-company employee lists). For those, the application uses Playwright to drive a real Chromium browser session using the user's saved login cookies.
+Authentication flow: User clicks "Connect LinkedIn." The app launches a Playwright-controlled Chromium window pointing to linkedin.com/login. The user logs in normally, including 2FA if enabled. The app detects successful login (URL changes to linkedin.com/feed/) and saves the session cookies to an encrypted file (.sessions/linkedin.enc) using a key derived from a user-provided passphrase. On subsequent launches, the app restores the session. If LinkedIn challenges the session (CAPTCHA, re-login required), the app pauses and prompts the user to re-authenticate.
+Acceptance criteria: (1) First-time auth flow completes in under 2 minutes. (2) Saved session survives app restart. (3) Session expiry is detected and user is re-prompted. (4) No LinkedIn credentials are stored in plaintext anywhere on disk.
+6.3 Job Opening Detection
+The application detects new job openings from two sources per company: (a) the company's career page URL (column 4 in the spreadsheet) and (b) the LinkedIn company jobs tab (constructed from the LinkedIn Company Page URL, column 3, by appending /jobs/).
+For career page scraping, the app uses httpx + BeautifulSoup4 with company-specific parsers (a generic parser falls back to scanning for keywords like "careers," "openings," "apply," "job," with title extraction from common ATS patterns: Greenhouse, Lever, Workday, Ashby, BambooHR). For LinkedIn jobs, the app uses the authenticated Playwright session to visit the company's /jobs/ page and extract job titles, locations, and posting dates.
+Detection runs on a configurable schedule (default: every 24 hours per company, staggered to avoid bursts). New openings are inserted into the openings table with a delta flag and surfaced in the dashboard as cards. Existing openings that disappear are marked as closed.
+Acceptance criteria: (1) For 10 sample companies, the scraper correctly extracts at least 80% of visible openings. (2) New openings appear in the dashboard within 24 hours of being posted. (3) Closed openings are flagged within 48 hours. (4) The scraper respects robots.txt and rate limits (max 1 request per 5 seconds per domain).
+6.4 HR Email Tracking
+The application does not send emails. It logs emails the user has sent externally (typically via Gmail) and tracks the follow-up lifecycle. Each HR email log entry captures: company_id, recipient_email, recipient_name (optional), subject, body_excerpt (first 200 chars), sent_at, and a status (sent / replied / no-reply / bounced).
+When the user logs an email, the app auto-suggests a follow-up date based on a configurable cadence (default: 5 business days after sent_at). The follow-up is created in the follow_ups table with status "pending" and due_on = suggested date. When the user marks the original email as "replied," any pending follow-ups for that email are auto-cancelled. When the user marks an email as "no-reply after follow-up," the company's contact status is updated to "cold."
+Acceptance criteria: (1) Logging an HR email takes under 30 seconds end-to-end. (2) Follow-up date auto-calculation excludes weekends. (3) Marking an email as "replied" cancels pending follow-ups. (4) The HR email appears in the company timeline immediately after logging.
+6.5 LinkedIn Activity Tracking
+This is the most technically ambitious feature. The application scrapes the user's own LinkedIn activity and maps it to tracked companies. Three event types are captured: (a) connection requests sent, (b) messages exchanged with connections who work at a tracked company, (c) profile views received from tracked-company employees (LinkedIn Premium feature).
+Sync flow: A background job (triggered manually or on schedule) opens Playwright, navigates to linkedin.com/mynetwork/invitations/sent, scrolls to load all sent invitations (capped at 200 most recent), extracts recipient name, headline, and company. For each recipient, the app matches the company name against the companies table (fuzzy match with manual confirmation for ambiguous cases). Matched events are inserted into linkedin_events with type = "connection_sent." A second pass visits linkedin.com/messaging/ and for each thread where the recipient's company matches a tracked company, extracts the message thread (capped at 50 most recent threads).
+Rate limiting: All LinkedIn scraping uses a randomized 8-15 second delay between page loads. The sync runs at most once every 6 hours. If LinkedIn returns a 999 status (rate limit) or CAPTCHA challenge, the sync aborts and alerts the user.
+Acceptance criteria: (1) A manual sync completes within 5 minutes for a fresh account. (2) Connection requests sent in the last 7 days are captured with 95% accuracy. (3) Company matching has a 90%+ automatic match rate; ambiguous cases are queued for manual confirmation. (4) No more than 30 LinkedIn page loads per sync.
+6.6 Follow-Up & Reminders
+The follow-up system is the proactive layer that prevents missed outreach. Follow-ups are created in three ways: (a) automatically when an HR email is logged (default +5 business days), (b) manually by the user from the company detail page ("Schedule follow-up" with custom date and notes), (c) automatically when a LinkedIn connection is accepted but no message has been exchanged in 7 days.
+Each follow-up has a status: pending, done, snoozed (with snooze_until date), or cancelled. The dashboard surfaces follow-ups due today, due this week, and overdue. A daily digest (configurable: email, in-app notification, or both) lists the day's required actions. Reminders respect a quiet-hours window (default: 9 PM - 8 AM local time) for in-app notifications.
+Acceptance criteria: (1) Follow-ups due today appear in the dashboard banner. (2) Snoozing a follow-up moves it to the snoozed list and re-surfaces on snooze_until. (3) The daily digest is generated at the configured time. (4) Overdue follow-ups are visually highlighted.
+6.7 Dashboard & Analytics
+The dashboard is the home screen and the primary value proposition. It is organized into four zones: (1) Funnel chart (companies -> contacted -> replied -> interviewed -> offered) rendered with Chart.js as a horizontal funnel; (2) Today's actions (follow-ups due, new job openings detected, pending sync); (3) Recent activity timeline (last 20 events across all companies); (4) Quick filters (industry, match score range, last activity date).
+The analytics tab provides cohort views: response rate by industry, response rate by company size, average days-to-reply, follow-up effectiveness (reply rate after 0/1/2 follow-ups). All charts are computed client-side from JSON endpoints to keep the server stateless and fast.
+Acceptance criteria: (1) Dashboard loads in under 2 seconds with 302 companies. (2) Funnel chart updates immediately when an email is logged or a status changes. (3) All analytics are computed from real data; no placeholders. (4) The dashboard is the default landing page after login.
+7. Non-Functional Requirements
+Non-functional requirements define the quality attributes the system must satisfy. Because this is a single-user local application, the priorities differ from a typical SaaS: data privacy and reliability are paramount; horizontal scalability is irrelevant.
+Table 2: Non-Functional Requirements
+8. Data Model (SQLite Schema)
+The data model consists of seven tables. SQLite is chosen for zero-configuration local storage. All timestamps are stored as ISO-8601 strings (TEXT columns) in UTC. Foreign keys are enforced via PRAGMA foreign_keys = ON. The schema below shows DDL with field types, constraints, and relationships.
+8.1 Table: companies
+Stores the 302 Kochi companies plus any manually added entries. Maps directly to the 19-column spreadsheet.
+Table 3: companies schema
+8.2 Table: applications
+Tracks formal job applications (distinct from loose outreach like HR emails or LinkedIn connections). One company can have multiple applications over time.
+Table 4: applications schema
+8.3 Table: contacts
+People at tracked companies: HR, founders, employees met via LinkedIn. One company has many contacts.
+Table 5: contacts schema
+8.4 Table: linkedin_events
+Immutable log of LinkedIn activity mapped to tracked companies. Append-only; updates create new rows, never overwrite.
+Table 6: linkedin_events schema
+8.5 Table: follow_ups
+Scheduled follow-up reminders. Linked to either an application or a contact, never both (mutually exclusive via CHECK constraint).
+Table 7: follow_ups schema
+8.6 Table: openings
+Job openings detected by the scraper. A company can have many openings; an opening can be linked to an application when the user applies.
+Table 8: openings schema
+8.7 Table: scraping_jobs
+Audit log of scraper runs. Each run records start time, end time, success/failure, and counts. Used for debugging and for scheduling the next run.
+Table 9: scraping_jobs schema
+8.8 Entity Relationship Summary
+The relationships are: companies (1) to (N) applications; companies (1) to (N) contacts; companies (1) to (N) openings; companies (1) to (N) linkedin_events; contacts (1) to (N) linkedin_events; applications (1) to (N) follow_ups; contacts (1) to (N) follow_ups; companies (1) to (N) follow_ups; openings (1) to (1) applications (when a user applies to a specific opening). All foreign keys have ON DELETE CASCADE except where explicitly noted, so deleting a company removes all related child rows. The companies table is the central hub; every other table references it directly or transitively.
+9. Tech Stack & Architecture
+The stack is chosen to minimize external dependencies, run reliably on a single laptop, and remain maintainable by one developer over time. Python is the primary language because of its strength in scraping (Playwright, BeautifulSoup) and rapid web prototyping (Flask).
+9.1 Stack Components
+Table 10: Technology Stack
+9.2 Architecture Overview
+The application follows a classic three-tier monolith: Presentation (Jinja2 templates + Bootstrap + Chart.js), Application (Flask blueprints), and Data (SQLite via SQLAlchemy). There is no separate backend API server; the Flask app serves both HTML pages and JSON endpoints (under /api/) from the same process. A single APScheduler background thread runs periodic scraping jobs inside the Flask process.
+9.2.1 Module Structure
+jobtracker/
+  app.py                  # Flask app factory + blueprint registration
+  config.py               # Environment-based config
+  models.py               # SQLAlchemy models (7 tables)
+  blueprints/
+    companies.py          # CRUD + upload
+    linkedin.py           # OAuth + Playwright session sync
+    scraper.py            # Career page + LinkedIn jobs scanning
+    dashboard.py          # Home + analytics
+    api.py                # JSON endpoints for charts + reminders
+  services/
+    linkedin_client.py    # Playwright wrapper
+    career_scraper.py     # Generic + ATS-specific parsers
+    matching.py           # Fuzzy company-name matching
+    reminders.py          # Follow-up due-date computation
+  templates/              # Jinja2 templates
+  static/                 # Bootstrap, Chart.js, custom JS
+  tests/                  # pytest suite
+  data.db                 # SQLite (created on first run)
+9.3 Data Flows
+9.3.1 Spreadsheet Upload Flow
+User POSTs .xlsx to /companies/upload -> openpyxl parses to list of dicts -> validation (required fields, deduplication) -> SQLAlchemy bulk insert into companies -> redirect to /companies with success flash. The whole flow is synchronous because 302 rows takes < 5 seconds.
+9.3.2 LinkedIn Sync Flow
+User clicks "Sync now" on /linkedin -> POST /linkedin/sync -> APScheduler spawns background job -> job loads encrypted session -> Playwright opens Chromium -> navigates through My Network sent invitations -> extracts recipients -> matching service maps to companies -> inserts into linkedin_events -> job updates scraping_jobs row with counts -> dashboard auto-refreshes via polling /api/sync-status.
+9.3.3 Job Opening Detection Flow
+APScheduler fires every 24h (staggered per company) -> selects 20 companies due for scan -> for each: if career_page_url present, httpx GET + BeautifulSoup parse -> if linkedin_url present, Playwright GET to /jobs/ -> normalize results -> compare against openings table -> insert new opening rows -> mark disappeared openings as closed -> update scraping_jobs.
+10. API & Endpoint Contracts
+All endpoints are served by the same Flask process. HTML routes return Jinja2 templates; /api/ routes return JSON. Standard HTTP status codes apply: 200 success, 201 created, 400 bad request, 404 not found, 500 server error. All POST bodies are form-encoded or JSON; responses are JSON for /api/ routes.
+Table 11: Flask Route Contract
+11. User Flows (Screen-by-Screen)
+This section describes the six primary screens at wireframe-level fidelity. Each description covers layout, key components, and primary user actions. All screens use Bootstrap 5 responsive grid; navigation is via a left sidebar that collapses on mobile to a hamburger menu.
+11.1 Screen: Dashboard (/)
+Layout: top alert banner for overdue follow-ups; main grid of 2 columns. Left column (8/12 width): funnel chart at top (full width of column), recent activity timeline below (scrollable, last 20 events). Right column (4/12 width): today's actions card (follow-ups due, new openings, pending sync) at top, quick filters card (industry dropdown, match score range slider, status checkboxes) below, then LinkedIn sync status card with last-sync time and Sync Now button. Primary actions: click any follow-up to navigate to that company's detail page; click any opening card to navigate to the application URL; click Sync Now to trigger LinkedIn sync.
+11.2 Screen: Companies List (/companies)
+Layout: full-width data table with sticky header. Columns: Company Name, Industry, Match Score (color-coded badge: green >=80, yellow 50-79, red <50), Contact Status (badge with color), Last Activity (relative time: "3 days ago"), Actions (View, Log Email, Sync). Above the table: filter bar with search input, industry dropdown, status filter chips, sort dropdown. Below the table: pagination (25 per page) and bulk-action bar (export selected, bulk-tag selected). Primary actions: click company name to open detail page; click Log Email to open modal; click Sync to trigger immediate LinkedIn sync for that company's contacts.
+11.3 Screen: Company Detail (/companies/<id>)
+This is the most information-dense screen. Layout: top header band with company name, industry tag, match score badge, location, website link, LinkedIn link, career page link; below the header, a horizontal status stepper showing the contact lifecycle (Not Contacted -> Emailed -> Replied -> Interviewing -> Offered) with the current stage highlighted. Main content is a single reverse-chronological timeline that merges events from all sources: linkedin_events (connection sent, message received), applications (applied, status changed), follow_ups (scheduled, snoozed, completed), openings (new opening detected, opening closed), and manual notes. Each timeline entry shows: icon by event type, timestamp, summary line, and expandable details. Right sidebar (3/12 width): "Quick Actions" card (Log Email, Schedule Follow-up, Add Note, Trigger Job Scan), "Contacts at this company" card (list of contacts with LinkedIn profile links), "Open Jobs" card (current openings with apply links).
+11.4 Screen: Upload (/companies/upload)
+Layout: centered card on plain background. Top of card: large drag-drop zone with file input fallback. Below the zone: expected schema hint (19 columns from the standard format). After file selected: client-side preview of first 5 rows in a table, plus a column-mapping interface showing detected columns and allowing the user to remap any misdetected column. Bottom: "Confirm Import" button (primary) and "Cancel" (secondary). On submit: progress bar while parsing + inserting; on success, redirect to /companies with a flash message "Imported 302 companies".
+11.5 Screen: LinkedIn Sync (/linkedin)
+Layout: top status card showing LinkedIn connection state. If not connected: large "Connect LinkedIn" button that opens a new browser window for OAuth2, then a Playwright window for session login. If connected: display user's LinkedIn name and profile picture, last sync timestamp, sync health (green/yellow/red based on last sync outcome), and a "Sync Now" button. Below the status card: a sync history table (last 10 syncs with start time, duration, items processed, items new, status). At the bottom: advanced settings (collapsible) for sync frequency, rate-limit delay, and session re-encryption.
+11.6 Screen: Settings (/settings)
+Layout: tabbed interface with three tabs. Tab 1 "LinkedIn": shows current session info, button to revoke session, button to re-authenticate. Tab 2 "Reminders": default follow-up cadence (days after email), quiet hours window, daily digest toggle and time, digest delivery method (in-app only / browser notification). Tab 3 "Scraping": per-domain rate-limit delay, max page-loads per sync, schedule for career page scans (default 24h staggered), schedule for LinkedIn sync (default every 6 hours). Each tab has a Save button that persists to a settings.json file.
+12. Edge Cases & Error Handling
+Every integration point with an external system (LinkedIn, career pages, xlsx parser) is a source of edge cases. The handling strategy is graceful degradation: the app never crashes on a single company's failure; instead, it logs the error and continues with the next company. The user is always informed of partial failures via a banner on the dashboard.
+Table 12: Edge Cases and Mitigations
+13. Roadmap & Phasing
+The eight-week MVP is split into three sequential phases. Each phase ends with a usable, demonstrable increment. Phase 4 is optional and not committed.
+Table 13: Implementation Roadmap
+Phase 1 is intentionally LinkedIn-free so that the foundation can be validated before tackling the riskiest technical challenge. Phase 2 carries the highest implementation risk (LinkedIn scraping reliability) and gets the most calendar time. Phase 3 is mostly UI work on top of stable data and is the lowest-risk phase.
+14. Acceptance Criteria
+Each criterion below is testable and ties to a specific functional requirement. All must pass for the MVP to be considered complete. Criteria are grouped by feature area.
+14.1 Company Upload & Management
+Given the kochi_software_companies.xlsx file, when the user uploads it, then all 302 rows are inserted into companies table within 5 seconds.
+Given the spreadsheet is already uploaded, when the user re-uploads the same file, then 0 duplicate rows are created and 0 rows are lost.
+Given 302 companies in the database, when the user filters by industry = 'AI / Machine Learning', then the result count matches the spreadsheet's filter on the same column (within +/- 2 rows for boundary cases).
+Given a company with hr_email = 'careers@example.com', when the user edits it to 'hr@example.com' and refreshes, then the new value persists.
+14.2 LinkedIn Authentication
+Given a fresh install, when the user clicks 'Connect LinkedIn' and completes OAuth2 + session login, then the dashboard shows 'LinkedIn: Connected as <name>' within 2 minutes.
+Given a connected session, when the user closes and reopens the app, then the session is still valid and no re-login is required.
+Given LinkedIn session has expired, when the user clicks 'Sync Now', then the app detects the redirect to /login, aborts the sync, and prompts the user to re-authenticate.
+14.3 LinkedIn Sync
+Given the user has sent 20 LinkedIn connection requests in the last 7 days to employees of tracked companies, when a sync runs, then at least 18 of those 20 are captured in linkedin_events with type = 'connection_sent' and correctly mapped to companies.
+Given a sync is in progress, when the user navigates to /linkedin, then they see a live progress indicator showing items_processed count updating.
+Given LinkedIn returns a 999 status, when the sync retries with backoff and still fails, then the sync is aborted with status = 'aborted' and the user sees a yellow banner on the dashboard.
+14.4 Job Opening Detection
+Given a company with an open career page listing 5 jobs, when the scraper runs, then at least 4 of those 5 are inserted into openings with status = 'open'.
+Given an opening that was open yesterday and is now closed, when the next scrape runs, then the opening's status is updated to 'closed' within 48 hours.
+Given a career page that is a JavaScript SPA, when httpx fails to find job listings, then the scraper falls back to Playwright rendering and succeeds.
+14.5 HR Email & Follow-Up Tracking
+Given a company detail page is open, when the user clicks 'Log Email' and submits the modal, then the email appears in the company timeline within 1 second.
+Given an HR email was logged with sent_at = today, when the follow-up is auto-created, then due_on is set to 5 business days from today (excluding weekends).
+Given a follow-up is due today, when the user opens the dashboard, then the follow-up appears in the 'Today's Actions' card.
+Given a follow-up is due today, when the user marks it 'done', then it disappears from 'Today's Actions' and moves to a 'Completed Today' list.
+14.6 Dashboard & Analytics
+Given 302 companies with varied contact_status, when the user opens the dashboard, then the funnel chart renders in under 2 seconds with correct counts at each stage.
+Given the user logs a new HR email, when they refresh the dashboard, then the 'Contacted' count in the funnel chart increments by 1.
+Given the user navigates to the analytics tab, when they view the 'Response rate by industry' chart, then each industry's response rate is computed as (replied count) / (emailed count) for that industry.
+14.7 Export & Backup
+Given any state of the database, when the user clicks 'Export CSV', then a file downloads containing all companies with their latest contact_status and last_activity_at.
+Given the app has been running for 30+ days, when the user checks ~/.jobtracker/backups/, then there are 30 daily backup files and the oldest is no more than 30 days old.
+15. Appendix A — Spreadsheet Column Mapping
+This appendix documents the exact mapping from the 19 columns in kochi_software_companies.xlsx to the companies table. The mapping is implemented in services/spreadsheet_parser.py and runs on every upload. "Required" means the upload fails if the column is missing entirely; cells within the column may still be NULL or 'Unknown'.
+Table 14: Spreadsheet-to-Schema Mapping
+In addition to these 19 columns, three derived fields are populated automatically by the application: contact_status (defaults to 'not_contacted' on insert), last_activity_at (NULL on insert, updated whenever any linked event is created), and created_at / updated_at (managed by SQLAlchemy defaults). The spreadsheet's second sheet, 'Research Notes', is informational only and is not imported into the database; users can consult it manually for source provenance.
+
+--- TABLE ---
+P  R  D
+LinkedIn-Powered
+Job Application
+Tracker
+Product Requirements Document v1.0
+Author: Adithya (Solo Builder)
+Document Type: Product Requirements Document
+Status: Draft for Implementation
+Version: 1.0
+Date: 2026-07-02
+
+Personal Use Only - Local Deployment                                        PRD v1.0
+
+--- TABLE ---
+Goal (In Scope) | Non-Goal (Out of Scope)
+Single local dashboard for all job-seeking activity | Multi-user collaboration or shared company lists
+Auto-ingest 19-column Kochi company spreadsheet | Cloud-based hosting or any external API for data storage
+Hybrid LinkedIn integration (OAuth2 + Playwright session scraping) | LinkedIn official Marketing/Recruiter API integration (cost-prohibitive for personal use)
+Detect new job openings from career pages and LinkedIn jobs tab | AI auto-apply or auto-fill application forms
+Log HR emails sent, with follow-up scheduling and reminders | Email sending (Gmail SMTP integration) - logging only
+Track LinkedIn connection requests and messages per company | Automated connection-request sending (LinkedIn ToS violation)
+Dashboard with funnel chart (companies -> contacted -> replied -> interviewed -> offered) | Predictive ML models for response-rate forecasting
+Daily and weekly reminder digests for follow-ups and pending actions | Browser extension for one-click LinkedIn capture (deferred to Phase 4)
+Mobile-responsive local web UI accessible from any device on LAN | Native mobile app (iOS/Android)
+Export data to CSV/JSON for backup | Applicant Tracking System (ATS) integration
+
+--- TABLE ---
+Category | Requirement | Target / Constraint
+Performance | Dashboard page load time | < 2 seconds with 302 companies
+Performance | Spreadsheet upload + parse time (302 rows) | < 5 seconds
+Performance | LinkedIn sync runtime | < 5 minutes per full sync
+Performance | Career page scrape per company | < 10 seconds including 5s rate-limit delay
+Security | LinkedIn session cookie storage | AES-256 encrypted, key derived from user passphrase via PBKDF2
+Security | Database storage location | Local SQLite file at ~/.jobtracker/data.db, mode 0600
+Security | Network egress | Only to linkedin.com and user-uploaded career page URLs; no telemetry
+Security | Authentication | Local-only; no app-level login required; LinkedIn session is the only credential
+Reliability | LinkedIn rate-limit handling | Detect 999 status / CAPTCHA, abort sync, preserve partial results, alert user
+Reliability | Career page unreachable | Log error, mark company as "scrape failed," retry on next cycle, do not crash
+Reliability | Database backup | Auto-export to ~/.jobtracker/backups/data-YYYY-MM-DD.db daily, keep last 30
+Usability | Onboarding time from upload to first dashboard view | < 5 minutes
+Usability | Common action (log email, mark follow-up done) click depth | < 3 clicks from dashboard
+Maintainability | Code structure | Flask blueprints: companies, linkedin, scraper, dashboard, api; each < 500 LOC
+Maintainability | Test coverage on data parsing and matching logic | > 70% via pytest
+Portability | Operating systems supported | macOS 12+, Windows 10+, Ubuntu 22.04+ via Python 3.11 venv
+Portability | External dependencies | Playwright Chromium auto-installs on first run; no system Chrome required
+Privacy | Data residency | 100% local; no cloud sync, no analytics, no error reporting
+
+--- TABLE ---
+Field | Type | Constraints | Source Column
+id | INTEGER | PRIMARY KEY AUTOINCREMENT | Auto-generated
+name | TEXT | NOT NULL UNIQUE | Company Name
+website | TEXT |  | Official Website
+linkedin_url | TEXT |  | LinkedIn Company Page
+career_page_url | TEXT |  | Career Page
+hr_email | TEXT |  | HR Email (Public Only)
+founder_ceo | TEXT |  | Founder / CEO
+founder_linkedin | TEXT |  | Founder LinkedIn
+location | TEXT |  | Location
+company_size | TEXT |  | Company Size
+company_type | TEXT |  | Startup or MNC
+industry | TEXT |  | Industry
+tech_stack | TEXT |  | Tech Stack
+uses_react | BOOLEAN |  | Uses React (Yes/No)
+uses_python | BOOLEAN |  | Uses Python (Yes/No)
+uses_ai | BOOLEAN |  | Uses AI (Yes/No)
+internship_friendly | TEXT |  | Internship Friendly
+freshers_hiring | TEXT |  | Freshers Hiring
+match_score | INTEGER | 0-100 | Match Score (0-100)
+notes | TEXT |  | Notes
+contact_status | TEXT | DEFAULT 'not_contacted' — enum: not_contacted, emailed, replied, interviewing, offered, rejected, cold | Derived at runtime
+last_activity_at | TEXT | ISO-8601 timestamp of last linked event | Derived at runtime
+created_at | TEXT | DEFAULT CURRENT_TIMESTAMP | Auto
+updated_at | TEXT | DEFAULT CURRENT_TIMESTAMP | Auto
+
+--- TABLE ---
+Field | Type | Constraints / Notes
+id | INTEGER | PRIMARY KEY AUTOINCREMENT
+company_id | INTEGER | FOREIGN KEY references companies(id) ON DELETE CASCADE
+role_title | TEXT | NOT NULL
+source | TEXT | Enum: career_page, linkedin_jobs, referral, other
+source_url | TEXT | Direct link to the posting
+applied_at | TEXT | ISO-8601 date
+status | TEXT | DEFAULT 'applied' — enum: applied, screening, interview_scheduled, interviewed, offer, rejected, withdrawn
+opening_id | INTEGER | FOREIGN KEY references openings(id) — nullable
+notes | TEXT | 
+created_at | TEXT | DEFAULT CURRENT_TIMESTAMP
+
+--- TABLE ---
+Field | Type | Constraints / Notes
+id | INTEGER | PRIMARY KEY AUTOINCREMENT
+company_id | INTEGER | FOREIGN KEY references companies(id) ON DELETE CASCADE
+name | TEXT | NOT NULL
+role_title | TEXT | e.g., 'Senior HR Manager'
+email | TEXT | 
+linkedin_profile_url | TEXT | Unique per person
+linkedin_headline | TEXT | Snapshot of headline at sync time
+contact_type | TEXT | Enum: hr, founder, employee, recruiter, referrer
+first_contacted_at | TEXT | ISO-8601
+created_at | TEXT | DEFAULT CURRENT_TIMESTAMP
+
+--- TABLE ---
+Field | Type | Constraints / Notes
+id | INTEGER | PRIMARY KEY AUTOINCREMENT
+company_id | INTEGER | FOREIGN KEY references companies(id) — nullable (for unmatched)
+contact_id | INTEGER | FOREIGN KEY references contacts(id) — nullable
+event_type | TEXT | Enum: connection_sent, connection_accepted, message_sent, message_received, profile_view_received, post_interaction
+event_at | TEXT | ISO-8601 timestamp of the original LinkedIn event
+raw_payload | TEXT | JSON blob with raw scraped data for debugging
+synced_at | TEXT | DEFAULT CURRENT_TIMESTAMP — when this app captured it
+notes | TEXT | 
+UNIQUE(company_id, contact_id, event_type, event_at) |  | Prevents duplicate sync
+
+--- TABLE ---
+Field | Type | Constraints / Notes
+id | INTEGER | PRIMARY KEY AUTOINCREMENT
+company_id | INTEGER | FOREIGN KEY references companies(id) ON DELETE CASCADE
+application_id | INTEGER | FOREIGN KEY references applications(id) — nullable
+contact_id | INTEGER | FOREIGN KEY references contacts(id) — nullable
+due_on | TEXT | ISO-8601 date when the follow-up should happen
+status | TEXT | DEFAULT 'pending' — enum: pending, done, snoozed, cancelled
+snooze_until | TEXT | ISO-8601 date, set when status = snoozed
+notes | TEXT | What the follow-up should accomplish
+created_at | TEXT | DEFAULT CURRENT_TIMESTAMP
+completed_at | TEXT | ISO-8601 timestamp when status changed to done
+CHECK((application_id IS NOT NULL) OR (contact_id IS NOT NULL)) |  | Must reference at least one entity
+
+--- TABLE ---
+Field | Type | Constraints / Notes
+id | INTEGER | PRIMARY KEY AUTOINCREMENT
+company_id | INTEGER | FOREIGN KEY references companies(id) ON DELETE CASCADE
+title | TEXT | NOT NULL
+location | TEXT | 
+url | TEXT | Direct link to apply
+source | TEXT | Enum: career_page, linkedin_jobs
+first_seen_at | TEXT | ISO-8601 — when the scraper first detected this
+last_seen_at | TEXT | ISO-8601 — most recent scrape that still showed this
+status | TEXT | DEFAULT 'open' — enum: open, closed, expired
+raw_metadata | TEXT | JSON blob with salary, experience, etc. if available
+UNIQUE(company_id, title, url) |  | Prevents duplicate openings
+
+--- TABLE ---
+Field | Type | Constraints / Notes
+id | INTEGER | PRIMARY KEY AUTOINCREMENT
+scraper_type | TEXT | Enum: linkedin_sync, career_page_scan, linkedin_jobs_scan
+target_company_id | INTEGER | FOREIGN KEY references companies(id) — nullable for full syncs
+started_at | TEXT | DEFAULT CURRENT_TIMESTAMP
+finished_at | TEXT | 
+status | TEXT | Enum: running, success, failed, aborted
+items_processed | INTEGER | Default 0
+items_new | INTEGER | Default 0 — count of new records inserted
+error_message | TEXT | Populated when status = failed or aborted
+raw_log | TEXT | JSON blob with per-page results for debugging
+
+--- TABLE ---
+Layer | Technology | Version | Rationale
+Language | Python | 3.11+ | Standard for scraping + web; user is comfortable
+Web Framework | Flask | 3.0+ | Minimal, unopinionated; easy to fit one brain
+ORM | SQLAlchemy | 2.0+ | Mature, supports SQLite; declarative models
+Database | SQLite | 3.40+ (stdlib) | Zero-config local storage; single file backup
+Browser Automation | Playwright Python | 1.40+ | Best-in-class for LinkedIn (stealthier than Selenium)
+HTTP Client | httpx | 0.27+ | Async support; modern requests replacement
+HTML Parser | BeautifulSoup4 | 4.12+ | Robust parsing of messy career pages
+Spreadsheet Parser | openpyxl | 3.1+ | Pure-Python xlsx reader
+Template Engine | Jinja2 | 3.1+ (Flask built-in) | Server-side rendering for dashboard
+CSS Framework | Bootstrap | 5.3+ | Rapid responsive UI without custom CSS
+Charts | Chart.js | 4.4+ | Lightweight, no D3 complexity
+Calendar | FullCalendar | 6.1+ (optional) | Visual follow-up calendar; defer to Phase 3
+Encryption | cryptography (Fernet) | 42.0+ | AES-128 for LinkedIn session cookies
+Task Scheduling | APScheduler | 3.10+ | In-process scheduler for periodic syncs
+Testing | pytest | 8.0+ | Industry standard; covers parsing + matching logic
+
+--- TABLE ---
+Method | Path | Description | Request / Response
+GET | / | Dashboard home | HTML: funnel chart, today's actions, recent activity
+GET | /companies | Paginated company list with filters | Query: ?industry=&min_score=&status=&page= -> HTML table
+GET | /companies/<id> | Company detail page (timeline view) | HTML: all events for one company in reverse chronological order
+POST | /companies/<id> | Update company fields | Form: field_name=value -> 302 redirect back
+DELETE | /companies/<id> | Delete company (cascades to children) | JSON: {success: true}
+GET | /companies/upload | Upload form | HTML: drag-drop zone + column preview
+POST | /companies/upload | Process uploaded xlsx | Multipart file: file=<xlsx> -> 302 to /companies
+POST | /companies/<id>/log-email | Log an HR email sent externally | JSON: {recipient, subject, body_excerpt, sent_at} -> 201 + auto-creates follow_up
+POST | /companies/<id>/follow-up | Manually schedule a follow-up | JSON: {due_on, notes, contact_id?} -> 201
+PATCH | /follow-ups/<id> | Update follow-up status | JSON: {status, snooze_until?} -> 200
+GET | /linkedin | LinkedIn integration status | HTML: auth status, last sync time, sync button
+GET | /linkedin/auth | Start OAuth2 flow | 302 redirect to LinkedIn consent
+GET | /linkedin/callback | OAuth2 callback | Query: ?code=&state= -> sets session, 302 to /linkedin
+POST | /linkedin/sync | Trigger background sync | JSON: {job_id} -> 202 Accepted
+GET | /api/sync-status/<job_id> | Poll sync progress | JSON: {status, items_processed, items_new, error?}
+POST | /scrape/jobs/<company_id> | Trigger immediate job scan for one company | JSON: {openings_found, new_count} -> 200
+GET | /api/stats | Aggregate stats for dashboard | JSON: {funnel: {identified, contacted, replied, interviewed, offered}, by_industry: [...], recent_activity: [...]}
+GET | /api/reminders | Today's + overdue follow-ups | JSON: {today: [...], overdue: [...], upcoming: [...]}
+GET | /api/companies/<id>/timeline | JSON timeline for company detail | JSON: [{type, at, summary, payload}]
+GET | /export/csv | Export companies + applications to CSV | CSV file download
+GET | /export/json | Full database export (backup) | JSON file download
+
+--- TABLE ---
+Edge Case | Mitigation
+LinkedIn session expired mid-sync | Detect redirect to /login, abort sync, mark scraping_job as 'aborted', alert user to re-authenticate, preserve all data captured before abort
+LinkedIn returns 999 status (rate limit) | Exponential backoff: wait 60s, retry once. If still 999, abort sync and resume from last successful company on next scheduled run
+LinkedIn CAPTCHA challenge appears | Pause Playwright, surface a notification to user, wait up to 10 minutes for manual solve. If user solves, continue; if timeout, abort gracefully
+Company career page unreachable (404, DNS fail, timeout) | Log error to scraping_jobs.error_message, increment failure count, skip to next company. After 3 consecutive failures, mark company.career_page_url as 'broken' and exclude from future scans until user fixes the URL
+xlsx column mismatch (missing required column 'Company Name') | Reject upload with specific error message listing missing columns. Suggest downloading the template format
+Duplicate company on re-upload (same name, different case) | Case-insensitive trim comparison. Prompt user: skip / overwrite / merge. Default: skip with count of skipped duplicates
+Company name fuzzy match ambiguous (e.g., 'TCS' vs 'Tata Consultancy Services') | Queue for manual confirmation in a 'Review Matches' UI. Do not auto-link ambiguous matches
+Scraped job opening URL already exists | UNIQUE constraint on (company_id, title, url) catches it. Update last_seen_at instead of inserting duplicate
+User marks HR email as 'replied' but pending follow-up exists | Auto-cancel all pending follow-ups for that email's company+contact. Notify user with toast: 'Cancelled 1 pending follow-up'
+Follow-up due_on is in the past (e.g., user manually scheduled yesterday) | Accept and immediately mark as 'overdue' in dashboard banner. Do not auto-reschedule
+User deletes a company that has 50+ child rows (applications, events, follow-ups) | Confirm modal showing child row counts. On confirm, CASCADE delete. Log to an audit_trail table for 30-day undo (future enhancement)
+LinkedIn returns empty sent-invitations list (account flagged or new account) | Treat as successful sync with 0 new items. Do not error. Log a warning if this persists across 3 syncs
+Career page is a JavaScript SPA (no static HTML) | Fall back to Playwright rendering for that domain. Cache the SPA-rendering flag per domain to avoid retrying with httpx
+Spreadsheet has extra unknown columns | Ignore unknown columns; do not fail the import. Surface a warning listing ignored columns
+App launched while another instance is already running | Bind lock file at ~/.jobtracker/.lock. On conflict, surface 'App already running' message and exit
+
+--- TABLE ---
+Phase | Timeline | Deliverables | Exit Criteria
+Phase 1: Foundation | Weeks 1-3 | Flask app skeleton; SQLAlchemy models; xlsx upload + parse; companies list + detail UI; manual contact_status updates; basic dashboard with company count only | User can upload kochi_software_companies.xlsx, view all 302 companies, edit any field, and update contact_status manually
+Phase 2: LinkedIn Integration | Weeks 4-6 | OAuth2 flow; Playwright session save/restore; connection-request sync; LinkedIn message sync; company-name fuzzy matching; job opening detection from career pages + LinkedIn jobs tab; openings table + dashboard cards | User can connect LinkedIn, run a sync, see 12+ companies with auto-detected connection events, see new openings surfaced within 24h of posting
+Phase 3: Outreach Tracking & Analytics | Weeks 7-8 | HR email logging modal; follow-up scheduler with auto-cadence; reminders dashboard + daily digest; full funnel chart; analytics tab with cohort views; CSV/JSON export; APScheduler for periodic syncs | User can log HR emails in under 30s, see follow-ups due today, view funnel chart with real conversion numbers, export full dataset for backup
+Phase 4 (Future): Enhancements | Weeks 9+ | Browser extension for one-click LinkedIn capture; AI-assisted cold-email draft generation; calendar integration (Google Calendar); SMS/WhatsApp reminders; multi-account LinkedIn support | Not committed; reassess after 30 days of MVP usage
+
+--- TABLE ---
+# | Spreadsheet Column | Target Table.Field | Type | Transform | Required?
+1 | Company Name | companies.name | TEXT | Trim, title-case preserved | Yes
+2 | Official Website | companies.website | TEXT | Strip protocol prefix for storage; preserve in URL form | No
+3 | LinkedIn Company Page | companies.linkedin_url | TEXT | Validate starts with https://www.linkedin.com/company/ | No
+4 | Career Page | companies.career_page_url | TEXT | Validate is a valid URL | No
+5 | HR Email (Public Only) | companies.hr_email | TEXT | Lowercase, validate email format; NULL if 'Unknown' | No
+6 | Founder / CEO | companies.founder_ceo | TEXT | Trim; NULL if 'Unknown' | No
+7 | Founder LinkedIn | companies.founder_linkedin | TEXT | Validate LinkedIn profile URL; NULL if 'Unknown' | No
+8 | Location | companies.location | TEXT | Preserve as-is (rich text) | No
+9 | Company Size | companies.company_size | TEXT | Preserve as-is; NULL if 'Unknown' | No
+10 | Startup or MNC | companies.company_type | TEXT | Normalize to enum: startup, mnc, unknown | No
+11 | Industry | companies.industry | TEXT | Split on ';' to enable multi-industry filter | No
+12 | Tech Stack | companies.tech_stack | TEXT | Split on ';' to enable per-tech filter | No
+13 | Uses React (Yes/No) | companies.uses_react | BOOLEAN | Yes -> true, No/Unknown -> false | No
+14 | Uses Python (Yes/No) | companies.uses_python | BOOLEAN | Yes -> true, No/Unknown -> false | No
+15 | Uses AI (Yes/No) | companies.uses_ai | BOOLEAN | Yes -> true, No/Unknown -> false | No
+16 | Internship Friendly | companies.internship_friendly | TEXT | Preserve as-is; NULL if 'Unknown' | No
+17 | Freshers Hiring | companies.freshers_hiring | TEXT | Normalize: 'Likely' / 'Yes' / 'No' / 'Unknown' | No
+18 | Match Score (0-100) | companies.match_score | INTEGER | Parse as int; NULL if not numeric | No
+19 | Notes | companies.notes | TEXT | Preserve as-is | No

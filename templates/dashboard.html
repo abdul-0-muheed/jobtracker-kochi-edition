@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Dashboard</h1>
+    <p class="page-subtitle">Your job search at a glance</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('companies.upload_form') }}" class="btn btn-primary">
+      <i class="bi bi-upload me-1"></i> Upload XLSX
+    </a>
+  </div>
+</div>
+
+<!-- Overdue banner -->
+{% if overdue_count > 0 %}
+<div class="alert alert-warning d-flex align-items-center gap-2 mb-4" role="alert">
+  <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+  <div>
+    <strong>{{ overdue_count }} overdue follow-up{{ 's' if overdue_count != 1 }}!</strong>
+    Check the actions below to clear them.
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Funnel Stats Cards ──────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  {% set funnel_items = [
+    ('identified',   funnel.identified,   'bi-building',        'text-info',    'Identified'),
+    ('contacted',    funnel.contacted,    'bi-envelope-fill',   'text-primary', 'Contacted'),
+    ('replied',      funnel.replied,      'bi-chat-dots-fill',  'text-success', 'Replied'),
+    ('interviewing', funnel.interviewing, 'bi-people-fill',     'text-warning', 'Interviewing'),
+    ('offered',      funnel.offered,      'bi-trophy-fill',     'text-danger',  'Offered'),
+  ] %}
+  {% for key, count, icon, color, label in funnel_items %}
+  <div class="col-6 col-lg">
+    <div class="stat-card h-100">
+      <div class="stat-icon {{ color }}">
+        <i class="bi {{ icon }}"></i>
+      </div>
+      <div class="stat-value">{{ count }}</div>
+      <div class="stat-label">{{ label }}</div>
+      {% if loop.index > 1 and funnel_items[loop.index0-1][1] > 0 %}
+      <div class="stat-rate text-muted">
+        {{ "%.0f"|format(count / funnel_items[loop.index0-1][1] * 100) }}% conv.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ── Main Grid ──────────────────────────────────────────────────────────── -->
+<div class="row g-4">
+
+  <!-- Left: Funnel Chart + Recent Activity -->
+  <div class="col-lg-8">
+
+    <!-- Funnel Chart -->
+    <div class="card dashboard-card mb-4">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <h5 class="card-title mb-0"><i class="bi bi-bar-chart-fill me-2 text-primary"></i>Application Funnel</h5>
+        <a href="{{ url_for('api.stats') }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-code-slash"></i> JSON
+        </a>
+      </div>
+      <div class="card-body">
+        <canvas id="funnelChart" height="120"></canvas>
+      </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="card dashboard-card">
+      <div class="card-header">
+        <h5 class="card-title mb-0"><i class="bi bi-clock-history me-2 text-success"></i>Recent Activity</h5>
+      </div>
+      <div class="card-body p-0">
+        {% if recent_companies %}
+        <ul class="activity-list">
+          {% for c in recent_companies %}
+          <li class="activity-item">
+            <div class="activity-badge {{ 'badge-success' if c.contact_status == 'replied'
+                                        else 'badge-primary' if c.contact_status == 'emailed'
+                                        else 'badge-warning' if c.contact_status == 'interviewing'
+                                        else 'badge-danger' if c.contact_status == 'offered'
+                                        else 'badge-secondary' }}">
+              {{ c.contact_status[0].upper() if c.contact_status else '?' }}
+            </div>
+            <div class="activity-body">
+              <a href="{{ url_for('companies.detail', cid=c.id) }}" class="activity-company">
+                {{ c.name }}
+              </a>
+              <span class="activity-status badge-status {{ c.contact_status }}">
+                {{ c.contact_status.replace('_', ' ').title() }}
+              </span>
+            </div>
+            <div class="activity-time text-muted small">
+              {{ c.last_activity_at | reltime }}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state py-5">
+          <i class="bi bi-inbox fs-1 text-muted"></i>
+          <p class="text-muted mt-2">No activity yet. Upload your XLSX to get started.</p>
+          <a href="{{ url_for('companies.upload_form') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-upload me-1"></i> Upload Now
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right: Actions + Sync + New Openings -->
+  <div class="col-lg-4">
+
+    <!-- Today's Actions -->
+    <div class="card dashboard-card mb-4">
+      <div class="card-header">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-bell-fill me-2 text-warning"></i>
+          Today's Actions
+          {% if today_followups %}
+          <span class="badge bg-warning text-dark ms-1">{{ today_followups|length }}</span>
+          {% endif %}
+        </h5>
+      </div>
+      <div class="card-body p-0">
+        {% if today_followups %}
+        <ul class="action-list">
+          {% for fu in today_followups %}
+          <li class="action-item">
+            <div class="action-icon"><i class="bi bi-bell text-warning"></i></div>
+            <div class="action-body">
+              <a href="{{ url_for('companies.detail', cid=fu.company_id) }}" class="action-company">
+                {{ fu.company.name if fu.company else 'Unknown' }}
+              </a>
+              <div class="action-note text-muted small">{{ fu.notes or 'Follow up' }}</div>
+            </div>
+            <button class="btn btn-sm btn-outline-success mark-done-btn"
+                    data-fuid="{{ fu.id }}" title="Mark done">
+              <i class="bi bi-check-lg"></i>
+            </button>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state py-4">
+          <i class="bi bi-check-circle fs-2 text-success"></i>
+          <p class="text-muted small mt-1">All clear! No follow-ups due today.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- LinkedIn Sync -->
+    <div class="card dashboard-card mb-4">
+      <div class="card-header">
+        <h5 class="card-title mb-0"><i class="bi bi-linkedin me-2 text-primary"></i>LinkedIn Sync</h5>
+      </div>
+      <div class="card-body">
+        {% if settings.linkedin.connected %}
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <span class="status-dot status-green"></span>
+          <span class="fw-medium">{{ settings.linkedin.user_name or 'Connected' }}</span>
+        </div>
+        <div class="text-muted small mb-3">
+          Last sync: {{ settings.linkedin.last_sync_at | reltime if settings.linkedin.last_sync_at else 'Never' }}
+        </div>
+        <form method="POST" action="{{ url_for('linkedin.trigger_sync') }}" class="sync-form">
+          <input type="text" name="passphrase" class="form-control form-control-sm mb-2"
+                 placeholder="Session passphrase" type="password" autocomplete="off">
+          <button type="submit" class="btn btn-primary w-100 btn-sm">
+            <i class="bi bi-arrow-repeat me-1"></i> Sync Now
+          </button>
+        </form>
+        {% else %}
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <span class="status-dot status-red"></span>
+          <span class="text-muted">Not connected</span>
+        </div>
+        <a href="{{ url_for('linkedin.linkedin_status') }}" class="btn btn-outline-primary w-100 btn-sm">
+          <i class="bi bi-linkedin me-1"></i> Connect LinkedIn
+        </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- New Openings -->
+    {% if new_openings %}
+    <div class="card dashboard-card">
+      <div class="card-header">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-search me-2 text-info"></i>New Openings
+          <span class="badge bg-info text-dark ms-1">{{ new_openings|length }}</span>
+        </h5>
+      </div>
+      <div class="card-body p-0">
+        <ul class="action-list">
+          {% for op in new_openings %}
+          <li class="action-item">
+            <div class="action-icon"><i class="bi bi-briefcase text-info"></i></div>
+            <div class="action-body">
+              <div class="action-company">{{ op.title }}</div>
+              <a href="{{ url_for('companies.detail', cid=op.company_id) }}" class="text-muted small">
+                {{ op.company.name if op.company else 'Unknown' }}
+              </a>
+            </div>
+            {% if op.url %}
+            <a href="{{ op.url }}" target="_blank" class="btn btn-sm btn-outline-info" title="Apply">
+              <i class="bi bi-box-arrow-up-right"></i>
+            </a>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script>
+// ── Funnel Chart ──────────────────────────────────────────────────────────────
+const funnelCtx = document.getElementById('funnelChart').getContext('2d');
+const funnelData = {
+  labels: ['Identified', 'Contacted', 'Replied', 'Interviewing', 'Offered'],
+  datasets: [{
+    label: 'Companies',
+    data: [
+      {{ funnel.identified }},
+      {{ funnel.contacted }},
+      {{ funnel.replied }},
+      {{ funnel.interviewing }},
+      {{ funnel.offered }},
+    ],
+    backgroundColor: [
+      'rgba(99, 179, 237, 0.8)',
+      'rgba(118, 169, 250, 0.8)',
+      'rgba(52, 211, 153, 0.8)',
+      'rgba(251, 191, 36, 0.8)',
+      'rgba(248, 113, 113, 0.8)',
+    ],
+    borderColor: [
+      'rgba(99, 179, 237, 1)',
+      'rgba(118, 169, 250, 1)',
+      'rgba(52, 211, 153, 1)',
+      'rgba(251, 191, 36, 1)',
+      'rgba(248, 113, 113, 1)',
+    ],
+    borderWidth: 1,
+    borderRadius: 6,
+  }]
+};
+new Chart(funnelCtx, {
+  type: 'bar',
+  data: funnelData,
+  options: {
+    indexAxis: 'y',
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => ` ${ctx.parsed.x} companies`
+        }
+      }
+    },
+    scales: {
+      x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+      y: { grid: { display: false }, ticks: { color: '#cbd5e1', font: { weight: '500' } } }
+    }
+  }
+});
+
+// ── Mark done buttons ─────────────────────────────────────────────────────────
+document.querySelectorAll('.mark-done-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const fuid = btn.dataset.fuid;
+    const res = await fetch(`/companies/follow-ups/${fuid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'done' }),
+    });
+    if (res.ok) {
+      btn.closest('.action-item').style.opacity = '0';
+      setTimeout(() => btn.closest('.action-item').remove(), 300);
+    }
+  });
+});
+</script>
+{% endblock %}
