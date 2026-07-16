@@ -1,0 +1,52 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.pyc
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── Database & data files (use Docker volume instead) ─────────────────────────
+*.db
+*.sqlite
+data/
+backups/
+~/.jobtracker/
+
+# ── Environment / secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+
+# ── Playwright browsers (installed fresh inside image) ────────────────────────
+playwright-browsers/
+ms-playwright/
+
+# ── Git ───────────────────────────────────────────────────────────────────────
+.git/
+.gitignore
+
+# ── IDE / OS ──────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ── Tests & CI artefacts ──────────────────────────────────────────────────────
+.pytest_cache/
+tests/
+htmlcov/
+.coverage
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
+*.xlsx
+*.csv
+README.md
+document.txt
+PRD_content.txt
+Dockerfile
+docker-compose.yml

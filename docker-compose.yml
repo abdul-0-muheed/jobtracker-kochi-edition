@@ -1,0 +1,29 @@
+# docker-compose.yml — Easy single-command start for JobTracker
+# Usage: docker compose up --build
+version: "3.9"
+
+services:
+  jobtracker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jobtracker
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persist all app data (DB, sessions, backups, settings) across restarts
+      - jobtracker_data:/root/.jobtracker
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - FLASK_ENV=${FLASK_ENV:-production}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  jobtracker_data:
+    driver: local

@@ -48,12 +48,14 @@ def create_app(config_class=Config) -> Flask:
     from blueprints.linkedin   import linkedin_bp
     from blueprints.scraper    import scraper_bp
     from blueprints.api        import api_bp
+    from blueprints.infopark   import infopark_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(companies_bp)
     app.register_blueprint(linkedin_bp)
     app.register_blueprint(scraper_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(infopark_bp)
 
     # ── Jinja2 helpers ─────────────────────────────────────────────────────────
     @app.template_filter("datetimeformat")

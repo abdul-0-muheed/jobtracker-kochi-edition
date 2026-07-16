@@ -124,6 +124,30 @@ FIXED: services/career_scraper.py — Full overhaul (v2), scraper was returning 
 
 CHANGED: services/career_scraper.py — file grows from 402 → 636 lines
 
+SESSION 6 — Docker Support (2026-07-15)
+----------------------------------------
+CREATED: Dockerfile
+  - Multi-stage build (builder + runtime) based on python:3.11-slim
+  - Stage 1 (builder): installs gcc, libffi-dev, libssl-dev, libxml2-dev,
+    libxslt1-dev; pip-installs all requirements.txt into /install prefix
+  - Stage 2 (runtime): copies /install, installs Playwright Chromium
+    with all system dependencies (libnss3, libatk, libgbm, etc.)
+  - ENV: PYTHONUNBUFFERED=1, PYTHONDONTWRITEBYTECODE=1, FLASK_ENV=production
+  - VOLUME: /root/.jobtracker  (SQLite DB, sessions, backups, settings)
+  - EXPOSE 5000
+  - HEALTHCHECK: polls http://localhost:5000/ every 30s
+  - CMD: flask --app app:create_app() run --host=0.0.0.0 --port=5000
+
+CREATED: .dockerignore
+  - Excludes: __pycache__, .venv, *.db, *.sqlite, .env, .git,
+    playwright-browsers, .vscode, .pytest_cache, tests/, *.xlsx
+
+CREATED: docker-compose.yml
+  - Single service 'jobtracker', build from local Dockerfile
+  - Named volume: jobtracker_data → /root/.jobtracker
+  - Env vars SECRET_KEY, FLASK_ENV (overridable via .env file)
+  - Healthcheck mirrors Dockerfile; restart: unless-stopped
+
 ===============================================================
   FILES MODIFIED THIS PROJECT
 ===============================================================
@@ -151,3 +175,46 @@ e:\jobhunting\local-runner\local-runner\
   tests\test_parser.py
   tests\test_matching.py
   tests\test_reminders.py
+  Dockerfile                        [NEW]
+  .dockerignore                     [NEW]
+  docker-compose.yml                [NEW]
+
+SESSION 5 (2026-07-16)
+-----------------------
+FEATURE: Infopark Jobs Tab — scrapes https://infopark.in/companies-job
+
+CREATED:
+  services/infopark_scraper.py
+    - scrape_infopark_jobs(search, max_pages, delay): HTTP scraper using httpx + BeautifulSoup
+    - Handles pagination via ?page=N query param
+    - Stops when page returns "No Jobs." or empty rows
+    - scrape_intern_jobs(): convenience wrapper filtering search="Intern"
+
+  blueprints/infopark.py
+    - Blueprint: infopark_bp, url_prefix=/infopark
+    - GET  /infopark/           → renders infopark.html
+    - GET  /infopark/api/jobs   → returns cached jobs as JSON (supports search, intern, page, per_page)
+    - POST /infopark/api/refresh → triggers background scrape thread
+    - GET  /infopark/api/status  → returns scrape status (idle/running/done/error)
+    - Thread-safe in-memory cache (_cache dict + threading.Lock)
+
+  templates/infopark.html
+    - Premium dark glassmorphism UI
+    - Auto-scrapes on first visit (zero-config)
+    - Job cards with: title, company, posted date, deadline badge, intern badge, apply button
+    - Filter toggle: All Jobs / Internships Only
+    - Keyword search (debounced 350ms, client-side filter on cached results)
+    - Pagination (sliding window, 24 jobs/page)
+    - Stats strip: total jobs, internship count, companies count
+    - Live status bar with animated dots (idle/running/done/error)
+    - Skeleton loading cards while fetching
+    - 2-second polling during background scrape
+
+MODIFIED:
+  app.py
+    - Imported and registered infopark_bp blueprint
+
+  templates/base.html
+    - Added "Infopark Jobs" nav link to sidebar (between LinkedIn Sync and Settings)
+    - Active state: request.blueprint == 'infopark'
+
