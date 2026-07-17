@@ -181,6 +181,7 @@ class Opening(db.Model):
     source       = db.Column(db.Text)   # career_page | linkedin_jobs
     first_seen_at= db.Column(db.Text, default=_now_iso)
     last_seen_at = db.Column(db.Text, default=_now_iso)
+    deadline     = db.Column(db.Text)
     status       = db.Column(db.Text, default="open")  # open | closed | expired
     raw_metadata = db.Column(db.Text)   # JSON blob
 
@@ -200,6 +201,7 @@ class ScrapingJob(db.Model):
     scraper_type      = db.Column(db.Text)
     # Enum: linkedin_sync | career_page_scan | linkedin_jobs_scan
     target_company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=True)
+
     started_at        = db.Column(db.Text, default=_now_iso)
     finished_at       = db.Column(db.Text)
     status            = db.Column(db.Text, default="running")
@@ -210,6 +212,61 @@ class ScrapingJob(db.Model):
     raw_log           = db.Column(db.Text)   # JSON blob
 
     company = db.relationship("Company", back_populates="scraping_jobs")
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+
+# ── infopark_applied ──────────────────────────────────────────────────────────
+class InfoparkApplied(db.Model):
+    """Tracks Infopark jobs that the user has marked as applied."""
+    __tablename__ = "infopark_applied"
+    __table_args__ = (
+        db.UniqueConstraint("job_url", name="uq_infopark_applied_url"),
+    )
+
+    id                 = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    job_title          = db.Column(db.Text, nullable=False)
+    company_name       = db.Column(db.Text, nullable=False)
+    job_url            = db.Column(db.Text, nullable=False)
+    posted_date        = db.Column(db.Text)
+    last_date          = db.Column(db.Text)
+    applied_at         = db.Column(db.Text, default=_now_iso)
+    # FK to companies table if we found a name match (nullable)
+    matched_company_id = db.Column(db.Integer, db.ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
+
+    matched_company    = db.relationship("Company", backref=db.backref("infopark_applications", lazy="dynamic"))
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+
+class UserSetting(db.Model):
+    __tablename__ = 'user_settings'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    key = db.Column(db.String(100), unique=True, nullable=False)
+    value = db.Column(db.String(500), nullable=True)
+
+
+# ── scraped_jobs ───────────────────────────────────────────────────────────────
+class ScrapedJob(db.Model):
+    """Standalone table for jobs found via Deep Scraper. NOT linked to Company CRM."""
+    __tablename__ = "scraped_jobs"
+    __table_args__ = (
+        db.UniqueConstraint("url", name="uq_scraped_job_url"),
+    )
+
+    id           = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    title        = db.Column(db.Text, nullable=False)
+    company      = db.Column(db.Text, nullable=False)
+    location     = db.Column(db.Text)
+    url          = db.Column(db.Text, nullable=False)
+    source       = db.Column(db.Text)          # LinkedIn, Naukri, Indeed, etc.
+    company_type = db.Column(db.Text)          # Startup, MNC, IT / Tech
+    posted_date  = db.Column(db.Text)
+    ats_score    = db.Column(db.Integer, default=0)
+    scraped_at   = db.Column(db.Text, default=_now_iso)
+    status       = db.Column(db.Text, default="new")  # new | saved | applied | dismissed
 
     def to_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}

@@ -113,6 +113,7 @@ import threading
 import uuid
 
 _bulk_jobs: dict[str, dict] = {}
+_latest_bulk_job_id = None
 
 
 @scraper_bp.route("/jobs/all", methods=["POST"])
@@ -120,9 +121,12 @@ def scan_all_companies():
     """Trigger background career page scan for ALL companies that have career pages."""
     from flask import current_app
     app = current_app._get_current_object()
-
+    
+    global _latest_bulk_job_id
     job_id = str(uuid.uuid4())[:8]
+    _latest_bulk_job_id = job_id
     _bulk_jobs[job_id] = {
+        "job_id": job_id,
         "status": "running",
         "total": 0,
         "done": 0,
@@ -150,6 +154,8 @@ def scan_all_companies():
                     for job in jobs:
                         title = (job.get("title") or "").strip()
                         url = job.get("url") or ""
+                        posted_date = job.get("posted_date")
+                        deadline = job.get("deadline")
                         if not title:
                             continue
                         seen_urls.add(url)
@@ -161,6 +167,10 @@ def scan_all_companies():
                         if existing:
                             existing.last_seen_at = now
                             existing.status = "open"
+                            if posted_date:
+                                existing.first_seen_at = posted_date
+                            if deadline:
+                                existing.deadline = deadline
                         else:
                             try:
                                 o = Opening(
@@ -169,8 +179,9 @@ def scan_all_companies():
                                     location=job.get("location") or "",
                                     url=url,
                                     source=job.get("source", "career_page"),
-                                    first_seen_at=now,
+                                    first_seen_at=posted_date if posted_date else now,
                                     last_seen_at=now,
+                                    deadline=deadline
                                 )
                                 db.session.add(o)
                                 db.session.flush()
@@ -196,6 +207,14 @@ def scan_all_companies():
 
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"job_id": job_id, "message": "Bulk scan started"}), 202
+
+
+@scraper_bp.route("/status/latest")
+def scan_status_latest():
+    """Poll progress of the most recently started bulk scan."""
+    if not _latest_bulk_job_id or _latest_bulk_job_id not in _bulk_jobs:
+        return jsonify({"status": "idle"}), 200
+    return jsonify(_bulk_jobs[_latest_bulk_job_id])
 
 
 @scraper_bp.route("/status/<job_id>")

@@ -47,10 +47,24 @@
           </a>
         </li>
         <li class="nav-item">
+          <a class="nav-link {% if 'aggregator' in request.endpoint %}active{% endif %}"
+             href="{{ url_for('aggregator.search_jobs_page') }}">
+            <i class="bi bi-globe"></i>
+            <span>Global Search</span>
+          </a>
+        </li>
+        <li class="nav-item">
           <a class="nav-link {% if request.blueprint == 'companies' %}active{% endif %}"
              href="{{ url_for('companies.list_companies') }}">
             <i class="bi bi-building"></i>
             <span>Companies</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.blueprint == 'jobs' %}active{% endif %}"
+             href="{{ url_for('jobs.index') }}">
+            <i class="bi bi-briefcase-fill"></i>
+            <span>Jobs</span>
           </a>
         </li>
         <li class="nav-item">
@@ -106,6 +120,17 @@
 
   <!-- ── Main Content ────────────────────────────────────────────────────────── -->
   <div class="main-content" id="mainContent">
+    
+    <!-- Global Scan Progress Banner -->
+    <div id="globalScanBanner" style="display: none; background: rgba(15, 23, 42, 0.9); border-bottom: 1px solid #334155; padding: 0.75rem 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; position: sticky; top: 0; z-index: 1000; backdrop-filter: blur(8px);">
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
+        <span style="color: #e2e8f0; font-weight: 600;"><i class="bi bi-search me-2"></i>Background Scan Running...</span>
+        <span id="globalScanText" style="color: #94a3b8;">0 / 0</span>
+      </div>
+      <div class="progress" style="height: 6px; background-color: #1e293b; border-radius: 999px;">
+        <div id="globalScanBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%"></div>
+      </div>
+    </div>
 
     <!-- Mobile topbar -->
     <div class="mobile-topbar d-lg-none">
@@ -165,6 +190,31 @@ setTimeout(() => {
     bsAlert.close();
   });
 }, 5000);
+
+// Global Background Scan Polling
+const globalBanner = document.getElementById('globalScanBanner');
+const globalBar = document.getElementById('globalScanBar');
+const globalText = document.getElementById('globalScanText');
+globalBanner.style.display = 'none'; // hide initially
+
+setInterval(async () => {
+  try {
+    const res = await fetch('/scrape/status/latest');
+    if (!res.ok) return;
+    const d = await res.json();
+    
+    if (d.status === 'running') {
+      globalBanner.style.display = 'flex';
+      const pct = d.total > 0 ? Math.round((d.done / d.total) * 100) : 0;
+      globalBar.style.width = pct + '%';
+      globalText.innerHTML = `<span style="color:#22c55e;">${d.new_count} new</span> | ${d.done} / ${d.total} companies`;
+    } else {
+      globalBanner.style.display = 'none';
+    }
+  } catch (e) {
+    // silently fail
+  }
+}, 3000);
 </script>
 
 {% block scripts %}{% endblock %}

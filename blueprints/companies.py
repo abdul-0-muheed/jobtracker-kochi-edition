@@ -40,6 +40,7 @@ def list_companies():
     max_score = request.args.get("max_score", 100, type=int)
     search    = request.args.get("q", "")
     sort      = request.args.get("sort", "match_score_desc")
+    has_infopark = request.args.get("has_infopark", "")
 
     q = Company.query
 
@@ -63,6 +64,14 @@ def list_companies():
     }
     q = q.order_by(sort_map.get(sort, Company.match_score.desc()))
 
+    # Filter: only companies that have ≥1 Infopark application
+    if has_infopark == "1":
+        from models import InfoparkApplied
+        infopark_cids = db.session.query(InfoparkApplied.matched_company_id).filter(
+            InfoparkApplied.matched_company_id.isnot(None)
+        ).distinct().subquery()
+        q = q.filter(Company.id.in_(infopark_cids))
+
     pagination = q.paginate(page=page, per_page=25, error_out=False)
 
     # Get unique industries for filter dropdown
@@ -71,14 +80,28 @@ def list_companies():
         if row[0]
     ]
 
+    # Infopark applied counts per company_id
+    from models import InfoparkApplied
+    from sqlalchemy import func as sqlfunc
+    infopark_rows = (
+        db.session.query(InfoparkApplied.matched_company_id,
+                         sqlfunc.count(InfoparkApplied.id).label("cnt"))
+        .filter(InfoparkApplied.matched_company_id.isnot(None))
+        .group_by(InfoparkApplied.matched_company_id)
+        .all()
+    )
+    infopark_applied_counts = {row.matched_company_id: row.cnt for row in infopark_rows}
+
     return render_template(
         "companies/list.html",
         companies=pagination.items,
         pagination=pagination,
         industries=sorted(all_industries),
+        infopark_applied_counts=infopark_applied_counts,
         current_filters={
             "industry": industry, "status": status, "q": search,
             "min_score": min_score, "max_score": max_score, "sort": sort,
+            "has_infopark": has_infopark,
         },
     )
 

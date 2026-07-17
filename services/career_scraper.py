@@ -19,11 +19,13 @@ import logging
 import random
 import re
 import time
+from datetime import datetime, timezone, timedelta
 from urllib.parse import urlparse, urljoin
 from urllib.robotparser import RobotFileParser
 
 import httpx
 from bs4 import BeautifulSoup
+from dateutil import parser as date_parser
 
 log = logging.getLogger(__name__)
 
@@ -119,7 +121,79 @@ def _detect_ats_platform(url: str) -> str | None:
     return None
 
 
-# ── ATS-specific parsers ──────────────────────────────────────────────────────
+# ── ATS API Fetchers ──────────────────────────────────────────────────────────
+
+def _fetch_greenhouse_api(client_token: str, base_url: str) -> list[dict]:
+    api_url = f"https://boards-api.greenhouse.io/v1/boards/{client_token}/jobs?content=true"
+    jobs = []
+    try:
+        with httpx.Client(timeout=10, headers={"User-Agent": _HEADERS["User-Agent"]}) as client:
+            resp = client.get(api_url)
+            if resp.status_code == 200:
+                data = resp.json()
+                for job in data.get("jobs", []):
+                    title = job.get("title")
+                    url = job.get("absolute_url")
+                    loc = job.get("location", {}).get("name", "")
+                    date_posted = job.get("updated_at", "")
+                    if title and url:
+                        jobs.append({"title": title, "location": loc, "url": url, "source": "greenhouse_api", "posted_date": date_posted})
+                log.info(f"Greenhouse API: {len(jobs)} jobs found for {client_token}")
+    except Exception as e:
+        log.warning(f"Greenhouse API failed for {client_token}: {e}")
+    return jobs
+
+def _fetch_lever_api(client_token: str, base_url: str) -> list[dict]:
+    api_url = f"https://api.lever.co/v0/postings/{client_token}?mode=json"
+    jobs = []
+    try:
+        with httpx.Client(timeout=10, headers={"User-Agent": _HEADERS["User-Agent"]}) as client:
+            resp = client.get(api_url)
+            if resp.status_code == 200:
+                data = resp.json()
+                for job in data:
+                    title = job.get("text")
+                    url = job.get("hostedUrl")
+                    loc = job.get("categories", {}).get("location", "")
+                    
+                    # Convert ms timestamp to iso
+                    created_at = job.get("createdAt")
+                    date_posted = ""
+                    if created_at:
+                        try:
+                            date_posted = datetime.fromtimestamp(created_at / 1000, tz=timezone.utc).isoformat()
+                        except Exception:
+                            pass
+                            
+                    if title and url:
+                        jobs.append({"title": title, "location": loc, "url": url, "source": "lever_api", "posted_date": date_posted})
+                log.info(f"Lever API: {len(jobs)} jobs found for {client_token}")
+    except Exception as e:
+        log.warning(f"Lever API failed for {client_token}: {e}")
+    return jobs
+
+def _fetch_ashby_api(client_token: str, base_url: str) -> list[dict]:
+    api_url = f"https://api.ashbyhq.com/posting-api/job-board/{client_token}?includeCompensation=true"
+    jobs = []
+    try:
+        with httpx.Client(timeout=10, headers={"User-Agent": _HEADERS["User-Agent"]}) as client:
+            resp = client.get(api_url)
+            if resp.status_code == 200:
+                data = resp.json()
+                for job in data.get("jobs", []):
+                    title = job.get("title")
+                    url = job.get("jobUrl")
+                    loc = job.get("location", "")
+                    date_posted = job.get("publishedAt", "")
+                    if title and url:
+                        jobs.append({"title": title, "location": loc, "url": url, "source": "ashby_api", "posted_date": date_posted})
+                log.info(f"Ashby API: {len(jobs)} jobs found for {client_token}")
+    except Exception as e:
+        log.warning(f"Ashby API failed for {client_token}: {e}")
+    return jobs
+
+
+# ── ATS-specific HTML parsers ─────────────────────────────────────────────────
 
 def _parse_greenhouse(soup: BeautifulSoup, base_url: str) -> list[dict]:
     jobs = []
@@ -432,12 +506,84 @@ def _extract_json_ld_jobs(soup: BeautifulSoup, base_url: str) -> list[dict]:
                     else:
                         location = ""
                     url = item.get("url", base_url)
+                    date_posted = item.get("datePosted", "")
+                    valid_through = item.get("validThrough", "")
                     if title:
-                        jobs.append({"title": title, "location": location, "url": url, "source": "json_ld"})
+                        jobs.append({
+                            "title": title, "location": location, "url": url, 
+                            "source": "json_ld", "posted_date": date_posted, "deadline": valid_through
+                        })
         except Exception:
             pass
     return jobs
 
+def _extract_deadline(elem: BeautifulSoup) -> str:
+    """Extract an application deadline from a job listing element using text heuristics."""
+    text = elem.get_text(separator=" ", strip=True)
+    # Match phrases like "Deadline: Oct 12", "Closes: 2024-12-01", "Apply by 15th Jan"
+    match = re.search(r'(?:deadline|closes|closing date|apply by)\s*:?\s*(\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9}\s+\d{4}|[A-Za-z]{3,9}\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2})', text, re.IGNORECASE)
+    if match:
+        try:
+            d = date_parser.parse(match.group(1))
+            if d.tzinfo is None:
+                d = d.replace(tzinfo=timezone.utc)
+            return d.isoformat()
+        except Exception:
+            pass
+    return ""
+
+
+def _extract_date(elem: BeautifulSoup) -> str:
+    """Extract a date from a job listing element."""
+    # 1. Check <time> tags
+    for time_tag in elem.find_all("time"):
+        dt = time_tag.get("datetime")
+        if dt:
+            try:
+                parsed = date_parser.parse(dt)
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                return parsed.isoformat()
+            except Exception:
+                pass
+        
+    text = elem.get_text(separator=" ", strip=True)
+    
+    # 2. Relative dates
+    rel_match = re.search(r'(\d+)\s*(day|week|month|year|hr|hour|min)s?\s*ago', text, re.IGNORECASE)
+    if rel_match:
+        val = int(rel_match.group(1))
+        unit = rel_match.group(2).lower()
+        now = datetime.now(timezone.utc)
+        if 'day' in unit:
+            d = now - timedelta(days=val)
+        elif 'week' in unit:
+            d = now - timedelta(weeks=val)
+        elif 'month' in unit:
+            d = now - timedelta(days=val*30)
+        elif 'year' in unit:
+            d = now - timedelta(days=val*365)
+        else:
+            d = now
+        return d.isoformat()
+        
+    if re.search(r'\byesterday\b', text, re.IGNORECASE):
+        return (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    if re.search(r'\btoday\b', text, re.IGNORECASE):
+        return datetime.now(timezone.utc).isoformat()
+        
+    # 3. Explicit dates preceded by keywords
+    date_match = re.search(r'(?:posted|published|date)\s*:?\s*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})', text, re.IGNORECASE)
+    if date_match:
+        try:
+            d = date_parser.parse(date_match.group(1))
+            if d.tzinfo is None:
+                d = d.replace(tzinfo=timezone.utc)
+            return d.isoformat()
+        except Exception:
+            pass
+            
+    return ""
 
 def _extract_by_class_heuristic(soup: BeautifulSoup, base_url: str) -> list[dict]:
     """Find elements with class names suggesting job listings."""
@@ -472,7 +618,10 @@ def _extract_by_class_heuristic(soup: BeautifulSoup, base_url: str) -> list[dict
         loc_el = elem.find(class_=re.compile(r"location|city|place|region", re.I))
         location = loc_el.get_text(strip=True)[:80] if loc_el else ""
 
-        jobs.append({"title": title, "location": location, "url": url, "source": "career_page"})
+        posted_date = _extract_date(elem)
+        deadline = _extract_deadline(elem)
+
+        jobs.append({"title": title, "location": location, "url": url, "source": "career_page", "posted_date": posted_date, "deadline": deadline})
 
     return jobs[:50]
 
@@ -511,7 +660,12 @@ def _extract_job_links(soup: BeautifulSoup, base_url: str) -> list[dict]:
                 ]):
                     continue
 
-        jobs.append({"title": title, "location": "", "url": url, "source": "career_page"})
+        # Look at the parent element to extract date
+        parent = a.find_parent(["li", "tr", "div", "article"])
+        posted_date = _extract_date(parent) if parent else ""
+        deadline = _extract_deadline(parent) if parent else ""
+
+        jobs.append({"title": title, "location": "", "url": url, "source": "career_page", "posted_date": posted_date, "deadline": deadline})
 
     return jobs[:30]
 
@@ -587,10 +741,30 @@ def _scrape_with_playwright(url: str, wait_extra: int = 5) -> list[dict]:
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
+def _extract_ats_token(url: str, platform: str) -> str | None:
+    """Extract the client token from an ATS URL."""
+    parsed = urlparse(url)
+    path = parsed.path.strip("/")
+    parts = path.split("/")
+    
+    if platform == "greenhouse":
+        # boards.greenhouse.io/token or greenhouse.io/careers/token
+        if parsed.netloc == "boards.greenhouse.io" and len(parts) > 0:
+            return parts[0]
+    elif platform == "lever":
+        # jobs.lever.co/token
+        if parsed.netloc == "jobs.lever.co" and len(parts) > 0:
+            return parts[0]
+    elif platform == "ashby":
+        # jobs.ashbyhq.com/token
+        if parsed.netloc == "jobs.ashbyhq.com" and len(parts) > 0:
+            return parts[0]
+    return None
+
 def scrape_career_page(url: str, delay: tuple = RATE_LIMIT_DELAY) -> list[dict]:
     """
     Scrape a company career page for job listings.
-    Returns list of {title, location, url, source}.
+    Returns list of {title, location, url, source, posted_date}.
     """
     if not url:
         return []
@@ -601,6 +775,22 @@ def scrape_career_page(url: str, delay: tuple = RATE_LIMIT_DELAY) -> list[dict]:
     if not _check_robots(url):
         log.info(f"robots.txt disallows scraping {url}")
         return []
+
+    # Fast-path: try ATS JSON APIs if direct ATS board URL is provided
+    platform = _detect_ats_platform(url)
+    if platform in ["greenhouse", "lever", "ashby"]:
+        token = _extract_ats_token(url, platform)
+        if token:
+            log.info(f"Fast-path API extraction for {platform} with token '{token}'")
+            if platform == "greenhouse":
+                jobs = _fetch_greenhouse_api(token, url)
+            elif platform == "lever":
+                jobs = _fetch_lever_api(token, url)
+            elif platform == "ashby":
+                jobs = _fetch_ashby_api(token, url)
+                
+            if jobs:
+                return jobs
 
     if domain in _SPA_DOMAINS:
         return _scrape_with_playwright(url)
@@ -621,9 +811,21 @@ def scrape_career_page(url: str, delay: tuple = RATE_LIMIT_DELAY) -> list[dict]:
     # Log if we were redirected to an ATS platform
     if final_url != url:
         log.info(f"Redirected: {url} → {final_url}")
-        platform = _detect_ats_platform(final_url)
-        if platform:
-            log.info(f"Detected ATS platform via redirect: {platform}")
+        new_platform = _detect_ats_platform(final_url)
+        if new_platform:
+            log.info(f"Detected ATS platform via redirect: {new_platform}")
+            # Try API extraction on the redirected URL!
+            if new_platform in ["greenhouse", "lever", "ashby"]:
+                token = _extract_ats_token(final_url, new_platform)
+                if token:
+                    if new_platform == "greenhouse":
+                        jobs = _fetch_greenhouse_api(token, final_url)
+                    elif new_platform == "lever":
+                        jobs = _fetch_lever_api(token, final_url)
+                    elif new_platform == "ashby":
+                        jobs = _fetch_ashby_api(token, final_url)
+                    if jobs:
+                        return jobs
 
     if _looks_like_spa(html):
         log.info(f"{url} looks like a SPA — switching to Playwright")

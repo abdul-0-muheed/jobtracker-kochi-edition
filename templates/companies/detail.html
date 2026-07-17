@@ -136,6 +136,9 @@
         <button class="btn btn-outline-info btn-sm" id="scanJobsBtn">
           <i class="bi bi-search me-1"></i> Scan Jobs
         </button>
+        <button class="btn btn-outline-primary btn-sm mt-1" id="deepScanBtn">
+          <i class="bi bi-linkedin me-1"></i> Deep Scan (LinkedIn)
+        </button>
 
         <!-- Edit status -->
         <form method="POST" action="{{ url_for('companies.update_company', cid=company.id) }}" class="mt-2">
@@ -439,7 +442,32 @@ if (callToggleBtn) {
     } finally {
       callToggleBtn.disabled = false;
     }
+    // Deep Scan (LinkedIn)
   });
 }
+
+  document.getElementById('deepScanBtn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('deepScanBtn');
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split spin me-1"></i> Deep Scanning...';
+
+    try {
+      const res = await fetch(`/linkedin_scraper/scan/${companyId}`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`Deep Scan complete! Added ${data.added} jobs, updated ${data.updated}.`);
+        setTimeout(() => location.reload(), 2000);
+      } else {
+        alert(data.error || 'Deep scan failed');
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+    } catch(e) {
+      alert('Network error during deep scan');
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  });
 </script>
 {% endblock %}

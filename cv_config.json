@@ -1,0 +1,213 @@
+{
+  "target_profile": {
+    "experience": "Fresher / Recent Graduate",
+    "primary_skills": [
+      "JavaScript",
+      "React",
+      "Python",
+      "SQL",
+      "FastAPI",
+      "REST API",
+      "Git",
+      "GitHub",
+      "Supabase",
+      "Next.js",
+      "HTML",
+      "CSS"
+    ]
+  },
+  "job_roles": [
+    {
+      "category": "Software Engineering",
+      "roles": [
+        "Software Engineer Intern",
+        "Software Developer Intern",
+        "Software Engineering Intern",
+        "Software Engineer Trainee",
+        "Software Trainee",
+        "Associate Software Engineer",
+        "Junior Software Engineer",
+        "Graduate Engineer Trainee",
+        "Technical Intern",
+        "Application Developer Intern",
+        "Product Engineering Intern"
+      ]
+    },
+    {
+      "category": "Full Stack",
+      "roles": [
+        "Full Stack Developer Intern",
+        "Full Stack Engineer Intern",
+        "Web Developer Intern",
+        "Application Developer",
+        "Software Developer"
+      ]
+    },
+    {
+      "category": "Frontend",
+      "roles": [
+        "Frontend Developer Intern",
+        "React Developer Intern",
+        "React JS Developer",
+        "JavaScript Developer",
+        "UI Developer Intern"
+      ]
+    },
+    {
+      "category": "Backend",
+      "roles": [
+        "Backend Developer Intern",
+        "Python Developer Intern",
+        "API Developer",
+        "Backend Engineer Intern"
+      ]
+    },
+    {
+      "category": "AI",
+      "roles": [
+        "AI Intern",
+        "AI Engineer Intern",
+        "AI/ML Intern",
+        "Generative AI Intern",
+        "LLM Intern",
+        "Machine Learning Intern"
+      ]
+    },
+    {
+      "category": "Data",
+      "roles": [
+        "Data Engineering Intern",
+        "Data Engineer Trainee",
+        "SQL Developer Intern",
+        "Junior Data Engineer"
+      ]
+    },
+    {
+      "category": "QA",
+      "roles": [
+        "QA Intern",
+        "Software QA Intern",
+        "QA Automation Intern",
+        "Test Engineer Intern",
+        "Automation Test Intern"
+      ]
+    },
+    {
+      "category": "Product & Support",
+      "roles": [
+        "Product Support Intern",
+        "Technical Support Engineer Intern",
+        "Application Support Engineer",
+        "Implementation Engineer Intern",
+        "Customer Success Engineer",
+        "Technical Consultant Intern"
+      ]
+    }
+  ],
+  "search_keywords": [
+    "Software Engineer Intern",
+    "Software Developer Intern",
+    "Technical Intern",
+    "Software Trainee",
+    "Associate Software Engineer",
+    "Junior Software Engineer",
+    "Graduate Engineer Trainee",
+    "Full Stack Developer Intern",
+    "Frontend Developer Intern",
+    "Backend Developer Intern",
+    "Python Developer Intern",
+    "React Developer Intern",
+    "JavaScript Developer",
+    "Web Developer Intern",
+    "Application Developer",
+    "AI Intern",
+    "AI Engineer Intern",
+    "AI ML Intern",
+    "Machine Learning Intern",
+    "Generative AI Intern",
+    "LLM Intern",
+    "Data Engineering Intern",
+    "SQL Developer Intern",
+    "QA Intern",
+    "QA Automation Intern",
+    "Software QA Intern",
+    "Technical Support Engineer",
+    "Product Support Intern",
+    "Implementation Engineer",
+    "Customer Success Engineer"
+  ],
+  "search_queries": [
+    "Software Engineer Intern Kochi",
+    "Software Developer Intern Kochi",
+    "Technical Internship Kochi",
+    "React Intern Kochi",
+    "Python Intern Kochi",
+    "JavaScript Intern Kochi",
+    "SQL Intern Kochi",
+    "AI Intern Kochi",
+    "AI ML Intern Kochi",
+    "Full Stack Intern Kochi",
+    "Backend Intern Kochi",
+    "Frontend Intern Kochi",
+    "QA Intern Kochi",
+    "Product Support Intern Kochi",
+    "Technical Support Intern Kochi",
+    "Graduate Engineer Trainee Kerala",
+    "Associate Software Engineer Fresher Kochi",
+    "Software Trainee Kerala",
+    "Infopark Internship",
+    "Startup Internship Kochi"
+  ],
+  "ats_keywords": {
+    "languages": [
+      "Python",
+      "JavaScript",
+      "SQL",
+      "Java"
+    ],
+    "frontend": [
+      "React",
+      "Next.js",
+      "HTML",
+      "CSS"
+    ],
+    "backend": [
+      "FastAPI",
+      "REST API",
+      "JWT Authentication"
+    ],
+    "database": [
+      "PostgreSQL",
+      "MySQL",
+      "Supabase"
+    ],
+    "tools": [
+      "Git",
+      "GitHub",
+      "Vercel"
+    ],
+    "concepts": [
+      "CRUD",
+      "API Integration",
+      "Authentication",
+      "Responsive Design",
+      "Problem Solving",
+      "Debugging",
+      "Agile",
+      "SDLC"
+    ]
+  },
+  "avoid_roles": [
+    "SAP Consultant",
+    "Salesforce Consultant",
+    "Medical Coding",
+    "Digital Marketing",
+    "SEO Executive",
+    "Graphic Designer",
+    "HR Recruiter",
+    "Accountant",
+    "Finance Executive",
+    "BPO Voice Process",
+    "Data Entry Operator"
+  ]
+}

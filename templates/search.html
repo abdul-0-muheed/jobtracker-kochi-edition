@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+{% block title %}Global Job Search{% endblock %}
+
+{% block content %}
+<style>
+  .glass-card {
+    background: rgba(30, 41, 59, 0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  }
+  .search-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 1rem;
+    align-items: end;
+  }
+  .job-card {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 1.2rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .job-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+    border-color: rgba(56, 189, 248, 0.4);
+  }
+  .cv-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: linear-gradient(45deg, #10b981, #34d399);
+    color: white;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-weight: 600;
+  }
+  .source-badge {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #334155;
+    color: #cbd5e1;
+    margin-right: 8px;
+  }
+  .source-linkedin { background: #0284c7; color: white; }
+  .source-naukri { background: #2563eb; color: white; }
+  .source-internshala { background: #14b8a6; color: white; }
+  .source-foundit { background: #8b5cf6; color: white; }
+  .source-indeed { background: #2563eb; color: white; }
+  .source-wellfound { background: #facc15; color: black; }
+  .source-glassdoor { background: #16a34a; color: white; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0"><i class="bi bi-globe me-2 text-primary"></i>Global Job Search</h2>
+</div>
+
+<div class="glass-card mb-4">
+  <form id="searchForm" class="search-form">
+    <div>
+      <label class="form-label text-muted small mb-1">Location</label>
+      <input type="text" class="form-control bg-dark text-light border-secondary" id="searchLoc" value="{{ settings.location }}" placeholder="e.g. Kochi">
+    </div>
+    <div>
+      <label class="form-label text-muted small mb-1">Experience Level</label>
+      <select class="form-select bg-dark text-light border-secondary" id="searchExp">
+        <option value="Internship" {% if settings.experience == 'Internship' %}selected{% endif %}>Internship</option>
+        <option value="Entry Level" {% if settings.experience == 'Entry Level' %}selected{% endif %}>Entry Level</option>
+        <option value="Mid-Senior" {% if settings.experience == 'Mid-Senior' %}selected{% endif %}>Mid-Senior</option>
+      </select>
+    </div>
+    <div>
+        <button id="searchBtn" class="btn btn-primary">
+          <i class="bi bi-search"></i> Quick Search
+        </button>
+        <button id="deepSearchBtn" class="btn btn-warning ms-2">
+          <i class="bi bi-globe"></i> Deep Search (30+ Platforms)
+        </button>
+      </div>
+  </form>
+  
+  <div class="mt-3 text-muted small">
+    <i class="bi bi-robot me-1 text-success"></i> 
+    <strong>CV AI Filter Active:</strong> Prioritizing technical roles requiring React, Next.js, Python, or FastAPI.
+  </div>
+</div>
+
+<div id="resultsContainer" class="row g-3">
+  <!-- Results go here -->
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const locInput = document.getElementById('searchLoc');
+const expInput = document.getElementById('searchExp');
+const searchBtn = document.getElementById('searchBtn');
+const container = document.getElementById('resultsContainer');
+
+function initProgress() {
+    container.innerHTML = `
+    <div class="col-12 py-4">
+      <div class="card bg-dark border-secondary">
+        <div class="card-body text-center">
+          <h5 class="text-light mb-3">Initializing Scrapers...</h5>
+          <div class="progress mb-3" style="height: 20px;">
+            <div id="scrapeProgress" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 5%;" aria-valuenow="5" aria-valuemin="0" aria-valuemax="100">0/7</div>
+          </div>
+          <div id="scrapeLogs" class="small text-muted text-start" style="height: 100px; overflow-y: auto; background: #1e293b; padding: 10px; border-radius: 4px; font-family: monospace;">
+            > Connecting to proxy networks...<br>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+document.getElementById('searchForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const btn = searchBtn;
+  initProgress();
+  const progBar = document.getElementById('scrapeProgress');
+  const logBox = document.getElementById('scrapeLogs');
+  
+  btn.disabled = true;
+  
+  try {
+    const res = await fetch('/aggregator/api/search', {
+      method: 'POST',
+      body: JSON.stringify({ location: locInput.value, experience: expInput.value })
+    });
+    
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let finalData = null;
+    let totalScraped = 0;
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      buffer += decoder.decode(value, { stream: true });
+      let lines = buffer.split('\n');
+      buffer = lines.pop();
+      
+      for (let line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const data = JSON.parse(line);
+          if (data.status === 'started') {
+            logBox.innerHTML += `> ${data.message}<br>`;
+          } else if (data.status === 'progress') {
+            let pct = Math.round((data.completed / data.total) * 100);
+            progBar.style.width = pct + '%';
+            progBar.innerText = `${data.completed}/${data.total}`;
+            
+            if (data.error) {
+              logBox.innerHTML += `> <span class="text-danger">[FAILED] ${data.scraper} error or block.</span><br>`;
+            } else {
+              totalScraped += (data.found || 0);
+              logBox.innerHTML += `> <span class="text-success">[SUCCESS] ${data.scraper} returned ${data.found} raw jobs. (Running Total: ${totalScraped})</span><br>`;
+            }
+            logBox.scrollTop = logBox.scrollHeight;
+          } else if (data.status === 'done') {
+            finalData = data;
+            logBox.innerHTML += `> <span class="text-primary text-bold">[COMPLETE] Scraped ${totalScraped} total raw jobs. ATS Filter kept ${data.total} perfect matches.</span><br>`;
+            logBox.scrollTop = logBox.scrollHeight;
+          }
+        } catch (err) {
+          console.error("Stream parse error:", err);
+        }
+      }
+    }
+    
+    if (finalData && finalData.jobs) {
+      if (finalData.jobs.length === 0) {
+        container.innerHTML = '<div class="col-12 text-center py-5 text-muted">No jobs found matching your exact ATS criteria.</div>';
+      } else {
+        container.innerHTML = finalData.jobs.map(job => {
+          let sourceClass = 'source-badge';
+          if (job.source === 'LinkedIn') sourceClass = 'source-linkedin';
+          else if (job.source === 'Naukri') sourceClass = 'source-naukri';
+          else if (job.source === 'Internshala') sourceClass = 'source-internshala';
+          else if (job.source === 'Foundit') sourceClass = 'source-foundit';
+          else if (job.source === 'Indeed') sourceClass = 'source-indeed';
+          else if (job.source === 'Wellfound') sourceClass = 'source-wellfound';
+          else if (job.source === 'Glassdoor') sourceClass = 'source-glassdoor';
+          
+          let cvBadge = job.cv_score > 0 ? `<div class="cv-badge"><i class="bi bi-star-fill me-1"></i>Match (${job.cv_score})</div>` : '';
+          let cType = job.company_type ? `<span class="badge bg-secondary ms-2">${job.company_type}</span>` : '';
+          
+          return `
+            <div class="col-md-6 col-lg-4">
+              <div class="job-card h-100 d-flex flex-column">
+                ${cvBadge}
+                <div class="mb-2">
+                  <span class="source-badge ${sourceClass}">${job.source}</span>
+                  <span class="text-muted small"><i class="bi bi-clock me-1"></i>${job.posted_date || 'Recently'}</span>
+                </div>
+                <h5 class="mb-1 text-light">${job.title}</h5>
+                <div class="text-info small mb-2"><i class="bi bi-building me-1"></i>${job.company} ${cType}</div>
+                <div class="text-muted small mb-3"><i class="bi bi-geo-alt me-1"></i>${job.location}</div>
+                
+                <div class="mt-auto pt-3 border-top border-secondary">
+                  <a href="${job.url}" target="_blank" class="btn btn-sm btn-outline-primary w-100">
+                    Apply Now <i class="bi bi-box-arrow-up-right ms-1"></i>
+                  </a>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+    
+  } catch (err) {
+    console.error(err);
+    container.innerHTML = '<div class="col-12 text-center py-5 text-danger">Search failed due to network error.</div>';
+  } finally {
+    btn.disabled = false;
+  }
+});
+  
+  // DEEP SEARCH LOGIC
+  const deepSearchBtn = document.getElementById('deepSearchBtn');
+  let pollInterval = null;
+  
+  deepSearchBtn.addEventListener('click', async () => {
+    initProgress();
+    const logBox = document.getElementById('scrapeLogs');
+    const progBar = document.getElementById('scrapeProgress');
+    
+    logBox.innerHTML = "> Starting Deep Scrape background process...<br>";
+    progBar.style.width = '0%';
+    progBar.innerText = 'Initializing...';
+    
+    deepSearchBtn.disabled = true;
+    searchBtn.disabled = true;
+    
+    const reqData = {
+      location: locInput.value,
+      experience: expInput.value
+    };
+    
+    try {
+      const resp = await fetch('/aggregator/api/deep-scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reqData)
+      });
+      const data = await resp.json();
+      if (data.job_id) {
+        logBox.innerHTML += `> Background Task Started! Job ID: ${data.job_id}<br>`;
+        logBox.innerHTML += `> Scraping massive list of platforms with evasion delays...<br>`;
+        pollDeepScrapeStatus(data.job_id, logBox, progBar);
+      } else {
+        logBox.innerHTML += `> Error starting deep scrape.<br>`;
+      }
+    } catch (err) {
+      logBox.innerHTML += `> Fetch Error: ${err}<br>`;
+    }
+  });
+  
+  async function pollDeepScrapeStatus(jobId, logBox, progBar) {
+    let printedLogs = 0;
+    
+    pollInterval = setInterval(async () => {
+      try {
+        const resp = await fetch(`/aggregator/api/deep-scrape/status/${jobId}`);
+        const data = await resp.json();
+        
+        if (data.error) {
+           logBox.innerHTML += `> Server reported: ${data.error}<br>`;
+           clearInterval(pollInterval);
+           deepSearchBtn.disabled = false;
+           searchBtn.disabled = false;
+           return;
+        }
+        
+        let pct = 0;
+        if (data.total_scrapers > 0) {
+            pct = Math.round((data.completed_scrapers / data.total_scrapers) * 100);
+        }
+        progBar.style.width = pct + '%';
+        progBar.innerText = `${data.completed_scrapers}/${data.total_scrapers} — ${data.phase || ''}`;
+
+        // Print new logs
+        for (let i = printedLogs; i < data.logs.length; i++) {
+            let logLine = data.logs[i];
+            if (logLine.includes("[FAILED]")) {
+                logBox.innerHTML += `> <span class="text-danger">${logLine}</span><br>`;
+            } else if (logLine.includes("[SUCCESS]") && logLine.includes("COMPLETE")) {
+                logBox.innerHTML += `> <span class="text-success fw-bold">${logLine}</span><br>`;
+            } else if (logLine.includes("[SUCCESS]")) {
+                logBox.innerHTML += `> <span class="text-success">${logLine} (Total: ${data.total_jobs_found})</span><br>`;
+            } else if (logLine.includes("[WARNING]")) {
+                logBox.innerHTML += `> <span class="text-warning">${logLine}</span><br>`;
+            } else if (logLine.startsWith("═══")) {
+                logBox.innerHTML += `> <span style="color:#f59e0b;font-weight:700;">${logLine}</span><br>`;
+            } else {
+                logBox.innerHTML += `> <span class="text-info">${logLine}</span><br>`;
+            }
+        }
+        printedLogs = data.logs.length;
+        logBox.scrollTop = logBox.scrollHeight;
+        
+        if (data.status === 'done' || data.status === 'error') {
+            clearInterval(pollInterval);
+            deepSearchBtn.disabled = false;
+            searchBtn.disabled = false;
+            logBox.innerHTML += `> <span class="text-success text-bold">[COMPLETE] Deep Scrape Finished! Total Jobs: ${data.total_jobs_found}</span><br>`;
+            logBox.scrollTop = logBox.scrollHeight;
+            
+            // Redirect to Jobs page to view the results
+            setTimeout(() => {
+                window.location.href = "/jobs/";
+            }, 2500);
+        }
+      } catch (err) {
+        console.error("Polling error", err);
+      }
+    }, 3000); // Poll every 3 seconds
+  }
+</script>
+{% endblock %}

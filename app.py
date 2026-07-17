@@ -49,6 +49,9 @@ def create_app(config_class=Config) -> Flask:
     from blueprints.scraper    import scraper_bp
     from blueprints.api        import api_bp
     from blueprints.infopark   import infopark_bp
+    from blueprints.jobs       import jobs_bp
+    from blueprints.linkedin_scraper import linkedin_scraper_bp
+    from blueprints.aggregator import aggregator_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(companies_bp)
@@ -56,6 +59,9 @@ def create_app(config_class=Config) -> Flask:
     app.register_blueprint(scraper_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(infopark_bp)
+    app.register_blueprint(jobs_bp)
+    app.register_blueprint(linkedin_scraper_bp)
+    app.register_blueprint(aggregator_bp)
 
     # ── Jinja2 helpers ─────────────────────────────────────────────────────────
     @app.template_filter("datetimeformat")

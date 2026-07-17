@@ -1,220 +1,105 @@
-===============================================================
-  JobTracker — Change Log / Document
-===============================================================
+============================================================
+CHANGES LOG - Job Tracker Local Runner
+============================================================
 
-SESSION 1 (2026-07-02)
------------------------
-CREATED: Full Flask monolithic app from PRD spec
-  - app.py, run.py, config.py, models.py
-  - blueprints/: dashboard.py, companies.py, linkedin.py, scraper.py, api.py
-  - services/: spreadsheet_parser.py, linkedin_client.py, matching.py, reminders.py
-  - templates/: base.html, index.html, companies/list.html, companies/detail.html,
-                linkedin.html, linkedin_auth.html, settings.html, upload.html
-  - static/css/style.css, static/js/main.js
-  - tests/: test_parser.py, test_matching.py, test_reminders.py
-  - start.bat (one-click launch)
-  - import_companies.py (XLSX import utility)
+[2026-07-16 BATCH 5] JOBS PAGE FILTERS AND TODAY BADGES
 
-SCHEMA: 7 SQLite tables
-  companies, applications, contacts, linkedin_events, follow_ups, openings, scraping_jobs
+PROBLEM SOLVED:
+  - Jobs page needed visual indication for newly scraped jobs.
+  - Removed (dismissed) jobs needed to be visually removed instantly on click and hidden by default.
+  - Needed a quick way to filter jobs by status (Applied, Bookmarked, Rejected, All).
 
-SESSION 2 (2026-07-08)
------------------------
-FIXED: spreadsheet_parser.py — BOM stripping, founder name cleaning,
-       column alias normalization for kochi_software_companies.xlsx
-FIXED: run.py — removed emoji print (Windows UnicodeEncodeError)
-FIXED: tests/test_parser.py — GC + missing_ok for Windows file locks
-FIXED: tests/test_matching.py — updated assertions for normalized strings
-CREATED: check_parse.py — XLSX verification script
-IMPORTED: 302 companies from kochi_software_companies.xlsx into DB
+MODIFIED FILES:
+  - blueprints/jobs.py : Added status_filter logic and passed today_str for template comparison. Hidden dismissed jobs by default unless filtering by All/Rejected.
+  - templates/jobs.html: Added a "NEW TODAY" badge with pulse animation for jobs scraped today. Added interactive filter chips for all statuses (Default, New, Bookmarked, Applied, Rejected, All). Modified setStatus JS function to instantly hide a dismissed card with an animation if the current view isn't 'All' or 'Rejected'.
 
-SESSION 3 — LinkedIn Fix (2026-07-08)
----------------------------------------
-FIXED: blueprints/linkedin.py — full rewrite
-  - Removed broken daemon-thread Playwright call
-  - New auth flow: POST /auth/start → stores passphrase in flask session
-    → redirects to /auth/waiting page showing manual run command
-  - New /auth/check AJAX endpoint polls for session file existence
-  - Added /reset-passphrase route (clears session + redirects to auth)
-  - /revoke still works as before
+[2026-07-16 BATCH 4] JOBS PAGE FILTERS AND DATE FIXES
 
-CREATED: linkedin_login_helper.py
-  - Standalone script that opens Chromium visibly for LinkedIn login
-  - Saves encrypted session cookies (AES-256 via Fernet)
-  - User runs this manually from their own terminal
+PROBLEM SOLVED:
+  - Jobs page had no easy way to filter for Internships or specific company types.
+  - The date displayed for jobs was always today's date (the scraped date), instead of the actual posted date.
 
-CREATED: templates/linkedin_waiting.html
-  - Shows copy-able terminal command
-  - Auto-polls /auth/check every 5 seconds
-  - Redirects automatically on success
+MODIFIED FILES:
+  - blueprints/jobs.py : Added `intern` and `type` (startup/mnc/it) query parameters to the `index` route. Modified the database query to filter `ScrapedJob` based on these parameters. Added counts for internships and startups to pass to the template.
+  - templates/jobs.html: 
+      - Added interactive "Filter Chips" (All Jobs, Internships, Startups, MNC / Corporate) below the search bar.
+      - Fixed date display logic: now shows `posted_date` (if available) with a calendar icon, and `scraped_at` with a clock icon and "Scraped" label.
+      - Updated pagination links to preserve the selected filter state.
 
-FIXED: templates/linkedin_auth.html — added missing name="confirm_passphrase"
-       (this was the root cause of the login loop)
+[2026-07-16 BATCH 3] COMPANY CAREER PAGES IN DEEP SEARCH
 
-FIXED: templates/companies/detail.html — replaced Jinja2 getattr() (undefined)
-       with direct field access
+PROBLEM SOLVED:
+  - Deep Search was only scraping job portals, ignoring the user's saved companies list
+  - jobs.html 500 error: url_for('aggregator.index') was wrong (2 places fixed)
 
-CHANGED: run.py — debug=True for visible tracebacks in browser
+MODIFIED FILES:
+  - services/deep_scraper.py : Added Phase 2 — after all portals are scraped, the scraper
+                               loops through all Company records with career_page_url set,
+                               calls scrape_career_page() on each, and saves ATS-matched
+                               results to ScrapedJob table. Progress bar total updates live.
+  - templates/search.html    : Progress bar now shows phase label ("Phase 1: Job Portals" /
+                               "Phase 2: Your Companies"). Log lines colour-coded: yellow for
+                               phase headers, orange/yellow for warnings, bold for completion.
+  - templates/jobs.html      : Fixed 2nd aggregator.index → aggregator.search_jobs_page
 
-SESSION 4 — Phone Number & Call Status (2026-07-08)
------------------------------------------------------
-CHANGED: models.py
-  - Added Company.phone_number (TEXT) — manually entered by user
-  - Added Company.call_status (TEXT, default='not_called')
-    Enum: 'not_called' | 'called'
+HOW PHASE 2 WORKS:
+  - Queries Company.query.filter(career_page_url != NULL)
+  - Calls scrape_career_page(url) for each company
+  - Enriches job dict with company.name and company.company_type
+  - Sets source = "{CompanyName} (Career Page)"  so you can filter by it in Jobs page
+  - Saves to ScrapedJob (NOT Opening/CRM) — companies list stays clean
+  - Scrapes concurrently/sequentially without the 3-10s random evasion delay used in Phase 1 
+    (since these are all distinct domains, no IP ban risk from aggressive polling).
 
-MIGRATED: DB (migrate_phone_call.py)
-  - ALTER TABLE companies ADD COLUMN phone_number TEXT
-  - ALTER TABLE companies ADD COLUMN call_status TEXT DEFAULT 'not_called'
+[2026-07-16 BATCH 2] BLOCKED SCRAPERS FIX + SCRAPPEDJOB TABLE + PREMIUM JOBS UI
 
-IMPORTED: Phone numbers from XLSX 'Numbers' column (backfill_phones.py)
-  - 1 company had a phone number: 2Base Technologies Pvt Ltd → 91 484 295 0235
+PROBLEM SOLVED:
+  - Wellfound, Glassdoor, Shine, Cutshort were returning 0 jobs (blocked/wrong selectors)
+  - Scraped jobs were being added to the Company CRM list (wrong table)
+  - Jobs page had no UI to show deep-scraped jobs with full details
 
-CHANGED: blueprints/companies.py
-  - Added POST /companies/<id>/toggle-call
-    Toggles call_status between 'not_called' and 'called'
-    Returns JSON if AJAX, else redirect
-  - Added POST /companies/<id>/save-phone
-    Saves phone_number for a company
-    Returns JSON if AJAX, else redirect
-  - Added phone_number, call_status to CSV export fields
+MODIFIED FILES:
+  - models.py                      : Added ScrapedJob model (standalone table, no FK to Company)
+  - blueprints/jobs.py             : Rewritten to query ScrapedJob table with search/filter/sort/status
+  - templates/jobs.html            : Premium card-grid UI with ATS bar, source badges, company type labels,
+                                     Bookmark/Applied/Dismiss buttons per card
+  - services/deep_scraper.py       : Switched DB save from Company+Opening to ScrapedJob table
+  - services/wellfound_scraper.py  : Rewritten with better stealth headers, Firefox prefs, image blocking
+  - services/glassdoor_scraper.py  : Rewritten to use Glassdoor GraphQL API (bypasses Cloudflare)
+  - services/shine_scraper.py      : Rewritten to use httpx instead of Playwright (faster, lighter)
+  - services/cutshort_scraper.py   : Rewritten to use Cutshort public search REST API
+  - templates/search.html          : Post-deep-scrape redirect now goes to /jobs/ instead of /
 
-CHANGED: templates/companies/list.html
-  - Added "Call" column to table header
-  - Per-row call badge: red "Call?" if not_called, green "Called" if called
-  - Phone number shown below badge (if set)
-  - AJAX toggle — no page reload on click
-  - Empty colspan updated from 6 → 7
+SCRAPED JOBS UI FEATURES:
+  - Card grid layout (responsive, 340px+ columns)
+  - Colour-coded top strip: green = high ATS, yellow = mid, grey = low
+  - Source badge: LinkedIn (blue), Naukri (green), Indeed (red), etc.
+  - Company Type badge: Startup (yellow), MNC (purple), IT/Tech (green)
+  - Internship badge (auto-detected from title)
+  - ATS score bar (visual % fill)
+  - Posted date + scraped date shown
+  - Apply button (opens URL in new tab)
+  - Bookmark / Applied / Dismiss buttons (AJAX, no page reload)
+  - Sort by Recent or Best Match
+  - Filter by platform (dropdown)
+  - Live search with debounce
 
-CHANGED: templates/companies/detail.html
-  - Added "Phone & Call" card to right sidebar
-  - Phone number input with AJAX Save button (POST /save-phone)
-  - Call status toggle button — instantly flips green/red via AJAX
+[2026-07-16 BATCH 1] DEEP SCRAPE ARCHITECTURE - TIME-GAPPED MULTI-PLATFORM
 
-CHANGED: blueprints/companies.py — CSV export now includes phone_number, call_status
+CREATED FILES (Batch 1):
+  - services/deep_scraper.py        : Background thread queue. Scrapes 14 platforms
+                                      with random 3-10s evasion delays between each.
+  - services/simplyhired_scraper.py : SimplyHired scraper using Playwright/Firefox
+  - services/remoteok_scraper.py    : RemoteOK scraper using their public JSON API
+  - services/technopark_scraper.py  : Technopark (Trivandrum) scraper using Playwright
+  - services/freshersworld_scraper.py: Freshersworld scraper using Playwright
+  - services/hirist_scraper.py      : Hirist.tech scraper using Playwright
+  - services/instahyre_scraper.py   : Instahyre scraper using Playwright
 
-SESSION 5 — Career Scraper Fix (2026-07-13)
--------------------------------------------
-FIXED: services/career_scraper.py — Full overhaul (v2), scraper was returning 0 jobs
-  BUG 1 — _JOB_KEYWORDS regex was too narrow
-    Added: recruiter, hr, talent, sales, marketing, support, ux, ui, graphic,
-           content, writer, finance, accountant, operations, embedded, network,
-           system, infrastructure, product, growth, seo, dba, etl, helpdesk,
-           administrator, vacancy, role, hiring, and 15+ more terms
-  BUG 2 — _NOISE_PATTERNS used .search() instead of .match()
-    Old: re.compile(r"(cookie|privacy|...)", re.I)  ← blocked valid job titles
-    New: re.compile(r"^(cookie policy|privacy policy|...)$", re.I)  ← exact match
-  BUG 3 — SPA detection threshold too low (300 chars)
-    Old: len(body_text) < 300 and root_div  ← most JS career pages skipped
-    New: threshold 800 chars; also detects via link count < 5
-  BUG 4 — _extract_job_links URL filter too restrictive
-    Old: required URL to contain "job"/"career"/etc. even for same-domain links
-    New: same-domain links allowed freely; only cross-domain links need job URL
-  BUG 5 — No redirect URL tracking
-    Old: ATS platform detected from original URL only
-    New: final_url after httpx redirect is used for ATS detection and parsing
-  BUG 6 — Only 7 ATS parsers
-    Added: Workable, Recruitee, Teamtailor, Personio, iCIMS, Breezy HR, JazzHR
-    Added: _detect_ats_platform() — maps URL patterns to platform names
-    Added: _ATS_URL_PATTERNS — dict of ATS regex patterns
-    Added: Try ALL ATS parsers on every page (catches embedded ATS widgets)
-  BUG 7 — Playwright scraping too shallow
-    Old: 1 scroll + 4s wait
-    New: 3 scroll passes, wait for job CSS selectors, 5s final wait, 30s timeout
+BUGS FIXED (Batch 1):
+  - foundit_scraper.py: NameError href and date_elem were undefined
+  - ImportError: Job model → switched to Company+Opening (then later to ScrapedJob)
+  - ImportError: app module → pass current_app via aggregator.py
+  - ImportError: scheduler → replaced with threading.Thread
 
-CHANGED: services/career_scraper.py — file grows from 402 → 636 lines
-
-SESSION 6 — Docker Support (2026-07-15)
-----------------------------------------
-CREATED: Dockerfile
-  - Multi-stage build (builder + runtime) based on python:3.11-slim
-  - Stage 1 (builder): installs gcc, libffi-dev, libssl-dev, libxml2-dev,
-    libxslt1-dev; pip-installs all requirements.txt into /install prefix
-  - Stage 2 (runtime): copies /install, installs Playwright Chromium
-    with all system dependencies (libnss3, libatk, libgbm, etc.)
-  - ENV: PYTHONUNBUFFERED=1, PYTHONDONTWRITEBYTECODE=1, FLASK_ENV=production
-  - VOLUME: /root/.jobtracker  (SQLite DB, sessions, backups, settings)
-  - EXPOSE 5000
-  - HEALTHCHECK: polls http://localhost:5000/ every 30s
-  - CMD: flask --app app:create_app() run --host=0.0.0.0 --port=5000
-
-CREATED: .dockerignore
-  - Excludes: __pycache__, .venv, *.db, *.sqlite, .env, .git,
-    playwright-browsers, .vscode, .pytest_cache, tests/, *.xlsx
-
-CREATED: docker-compose.yml
-  - Single service 'jobtracker', build from local Dockerfile
-  - Named volume: jobtracker_data → /root/.jobtracker
-  - Env vars SECRET_KEY, FLASK_ENV (overridable via .env file)
-  - Healthcheck mirrors Dockerfile; restart: unless-stopped
-
-===============================================================
-  FILES MODIFIED THIS PROJECT
-===============================================================
-e:\jobhunting\local-runner\local-runner\
-  models.py
-  app.py
-  run.py
-  config.py
-  blueprints\companies.py
-  blueprints\linkedin.py
-  services\spreadsheet_parser.py
-  templates\base.html
-  templates\companies\list.html
-  templates\companies\detail.html
-  templates\linkedin.html
-  templates\linkedin_auth.html
-  templates\linkedin_waiting.html  [NEW]
-  linkedin_login_helper.py          [NEW]
-  migrate_phone_call.py             [NEW]
-  backfill_phones.py                [NEW]
-  import_companies.py               [NEW]
-  check_parse.py                    [NEW]
-  diagnose.py                       [NEW - dev tool]
-  start.bat                         [NEW]
-  tests\test_parser.py
-  tests\test_matching.py
-  tests\test_reminders.py
-  Dockerfile                        [NEW]
-  .dockerignore                     [NEW]
-  docker-compose.yml                [NEW]
-
-SESSION 5 (2026-07-16)
------------------------
-FEATURE: Infopark Jobs Tab — scrapes https://infopark.in/companies-job
-
-CREATED:
-  services/infopark_scraper.py
-    - scrape_infopark_jobs(search, max_pages, delay): HTTP scraper using httpx + BeautifulSoup
-    - Handles pagination via ?page=N query param
-    - Stops when page returns "No Jobs." or empty rows
-    - scrape_intern_jobs(): convenience wrapper filtering search="Intern"
-
-  blueprints/infopark.py
-    - Blueprint: infopark_bp, url_prefix=/infopark
-    - GET  /infopark/           → renders infopark.html
-    - GET  /infopark/api/jobs   → returns cached jobs as JSON (supports search, intern, page, per_page)
-    - POST /infopark/api/refresh → triggers background scrape thread
-    - GET  /infopark/api/status  → returns scrape status (idle/running/done/error)
-    - Thread-safe in-memory cache (_cache dict + threading.Lock)
-
-  templates/infopark.html
-    - Premium dark glassmorphism UI
-    - Auto-scrapes on first visit (zero-config)
-    - Job cards with: title, company, posted date, deadline badge, intern badge, apply button
-    - Filter toggle: All Jobs / Internships Only
-    - Keyword search (debounced 350ms, client-side filter on cached results)
-    - Pagination (sliding window, 24 jobs/page)
-    - Stats strip: total jobs, internship count, companies count
-    - Live status bar with animated dots (idle/running/done/error)
-    - Skeleton loading cards while fetching
-    - 2-second polling during background scrape
-
-MODIFIED:
-  app.py
-    - Imported and registered infopark_bp blueprint
-
-  templates/base.html
-    - Added "Infopark Jobs" nav link to sidebar (between LinkedIn Sync and Settings)
-    - Active state: request.blueprint == 'infopark'
-
+============================================================

@@ -1,0 +1,500 @@
+{% extends "base.html" %}
+{% block title %}Scraped Jobs ({{ total_jobs }}){% endblock %}
+
+{% block head %}
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+  body { font-family: 'Inter', sans-serif; }
+
+  /* ── Page Header ──────────────────────────────────────────────────── */
+  .jobs-hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1a2744 60%, #0c1a38 100%);
+    border: 1px solid rgba(56,189,248,0.12);
+    border-radius: 18px;
+    padding: 2rem 2rem 1.5rem;
+    margin-bottom: 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .jobs-hero::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 250px; height: 250px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(56,189,248,0.06) 0%, transparent 70%);
+  }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.3);
+    border-radius: 999px; padding: 0.3rem 0.9rem;
+    color: #38bdf8; font-size: 0.72rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 0.9rem;
+  }
+  .hero-title {
+    font-size: 2rem; font-weight: 800;
+    color: #f1f5f9; margin-bottom: 0.3rem;
+    line-height: 1.2;
+  }
+  .hero-sub { color: #64748b; font-size: 0.95rem; }
+  .hero-stats {
+    display: flex; gap: 2rem; margin-top: 1.2rem; flex-wrap: wrap;
+  }
+  .stat-item { display: flex; flex-direction: column; }
+  .stat-value { font-size: 1.6rem; font-weight: 800; color: #38bdf8; line-height: 1; }
+  .stat-label { font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+
+  /* ── Toolbar ──────────────────────────────────────────────────────── */
+  .toolbar {
+    display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+  }
+  .search-wrap { position: relative; flex: 1; min-width: 200px; max-width: 340px; }
+  .search-wrap i { position: absolute; left: 0.9rem; top: 50%; transform: translateY(-50%); color: #475569; }
+  .search-wrap input {
+    width: 100%; background: #0f172a; border: 1px solid #334155;
+    border-radius: 10px; padding: 0.55rem 1rem 0.55rem 2.4rem;
+    color: #e2e8f0; font-size: 0.88rem; transition: border-color 0.2s;
+  }
+  .search-wrap input:focus { outline: none; border-color: #38bdf8; }
+  .toolbar select {
+    background: #0f172a; border: 1px solid #334155; border-radius: 10px;
+    padding: 0.55rem 1rem; color: #e2e8f0; font-size: 0.85rem;
+  }
+  .sort-btns { display: flex; gap: 0.3rem; background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 0.25rem; }
+  .sort-btn {
+    background: transparent; border: none; color: #64748b;
+    padding: 0.35rem 0.8rem; border-radius: 7px; font-size: 0.8rem;
+    font-weight: 600; cursor: pointer; transition: all 0.15s;
+  }
+  .sort-btn.active { background: #1e293b; color: #38bdf8; }
+  .ms-auto-flex { margin-left: auto; }
+
+  /* ── Filter Chips ─────────────────────────────────────────────────── */
+  .filter-chips {
+    display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.1rem;
+    align-items: center;
+  }
+  .chip-label { color: #475569; font-size: 0.78rem; font-weight: 600; margin-right: 0.25rem; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.32rem 0.85rem; border-radius: 999px;
+    font-size: 0.78rem; font-weight: 600;
+    border: 1px solid #334155; background: #0f172a; color: #64748b;
+    text-decoration: none; cursor: pointer; transition: all 0.18s;
+  }
+  .chip:hover { border-color: #475569; color: #e2e8f0; text-decoration: none; }
+  .chip.active-chip { background: #1e293b; border-color: #38bdf8; color: #38bdf8; }
+  .chip.chip-intern.active-chip { border-color: #c4b5fd; color: #c4b5fd; background: rgba(139,92,246,0.12); }
+  .chip.chip-startup.active-chip { border-color: #fbbf24; color: #fbbf24; background: rgba(251,191,36,0.1); }
+  .chip.chip-mnc.active-chip { border-color: #a5b4fc; color: #a5b4fc; background: rgba(99,102,241,0.1); }
+
+  /* ── Job Cards Grid ───────────────────────────────────────────────── */
+  .jobs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .job-card {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 14px;
+    padding: 1.25rem;
+    display: flex; flex-direction: column; gap: 0.75rem;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .job-card:hover {
+    border-color: rgba(56,189,248,0.35);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    transform: translateY(-2px);
+  }
+  .job-card.status-applied { border-left: 3px solid #22c55e; }
+  .job-card.status-saved { border-left: 3px solid #f59e0b; }
+  .job-card.status-dismissed { opacity: 0.45; }
+
+  /* ATS score strip at top */
+  .score-strip {
+    position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    border-radius: 14px 14px 0 0;
+  }
+  .score-high { background: linear-gradient(90deg, #22c55e, #16a34a); }
+  .score-mid  { background: linear-gradient(90deg, #f59e0b, #d97706); }
+  .score-low  { background: linear-gradient(90deg, #475569, #334155); }
+
+  .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+  .card-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.2rem; }
+  .badge-source {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.2rem 0.55rem; border-radius: 6px; font-size: 0.68rem;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    border: 1px solid;
+  }
+  .src-linkedin   { color: #7dd3fc; border-color: rgba(125,211,252,0.25); background: rgba(125,211,252,0.08); }
+  .src-naukri     { color: #86efac; border-color: rgba(134,239,172,0.25); background: rgba(134,239,172,0.08); }
+  .src-indeed     { color: #fda4af; border-color: rgba(253,164,175,0.25); background: rgba(253,164,175,0.08); }
+  .src-internshala{ color: #c4b5fd; border-color: rgba(196,181,253,0.25); background: rgba(196,181,253,0.08); }
+  .src-foundit    { color: #fdba74; border-color: rgba(253,186,116,0.25); background: rgba(253,186,116,0.08); }
+  .src-glassdoor  { color: #67e8f9; border-color: rgba(103,232,249,0.25); background: rgba(103,232,249,0.08); }
+  .src-wellfound  { color: #f9a8d4; border-color: rgba(249,168,212,0.25); background: rgba(249,168,212,0.08); }
+  .src-remoteok   { color: #a5f3fc; border-color: rgba(165,243,252,0.25); background: rgba(165,243,252,0.08); }
+  .src-default    { color: #94a3b8; border-color: rgba(148,163,184,0.25); background: rgba(148,163,184,0.08); }
+
+  .badge-type {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.18rem 0.5rem; border-radius: 6px; font-size: 0.67rem;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+  }
+  .type-startup { background: rgba(251,191,36,0.1); color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
+  .type-mnc     { background: rgba(99,102,241,0.1); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.2); }
+  .type-it      { background: rgba(16,185,129,0.1); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.2); }
+  .type-default { background: rgba(71,85,105,0.1); color: #94a3b8; border: 1px solid rgba(71,85,105,0.2); }
+
+  .badge-new-today {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.18rem 0.5rem; border-radius: 6px; font-size: 0.67rem;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2);
+    animation: pulse-red 2s infinite;
+  }
+  @keyframes pulse-red {
+    0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+    70% { box-shadow: 0 0 0 4px rgba(239,68,68,0); }
+    100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+  }
+
+  .job-title {
+    font-size: 1rem; font-weight: 700; color: #f1f5f9;
+    line-height: 1.4; margin: 0;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .job-company {
+    color: #94a3b8; font-size: 0.85rem; font-weight: 500;
+    display: flex; align-items: center; gap: 0.4rem;
+  }
+
+  .card-meta { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .meta-item {
+    display: flex; align-items: center; gap: 0.3rem;
+    color: #64748b; font-size: 0.78rem;
+  }
+  .meta-item i { font-size: 0.7rem; }
+
+  .ats-bar-wrap { display: flex; align-items: center; gap: 0.6rem; }
+  .ats-bar {
+    flex: 1; height: 5px; background: #1e293b;
+    border-radius: 999px; overflow: hidden;
+  }
+  .ats-bar-fill { height: 100%; border-radius: 999px; transition: width 0.4s; }
+  .ats-label { font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
+  .ats-good  { color: #22c55e; }
+  .ats-mid   { color: #f59e0b; }
+  .ats-low   { color: #64748b; }
+
+  .card-actions { display: flex; gap: 0.5rem; margin-top: auto; }
+  .btn-apply {
+    flex: 1; display: inline-flex; align-items: center; justify-content: center;
+    gap: 0.4rem; padding: 0.5rem 0.75rem;
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    color: #fff; border-radius: 8px; font-size: 0.82rem; font-weight: 600;
+    text-decoration: none; transition: opacity 0.15s; border: none;
+  }
+  .btn-apply:hover { opacity: 0.85; color: #fff; text-decoration: none; }
+  .btn-status {
+    padding: 0.5rem 0.65rem; background: #1e293b; border: 1px solid #334155;
+    border-radius: 8px; color: #94a3b8; font-size: 0.85rem;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn-status:hover { border-color: #475569; color: #e2e8f0; }
+  .btn-status.active-saved   { border-color: #f59e0b; color: #f59e0b; background: rgba(245,158,11,0.1); }
+  .btn-status.active-applied { border-color: #22c55e; color: #22c55e; background: rgba(34,197,94,0.1); }
+  .btn-status.active-dismissed{ border-color: #ef4444; color: #ef4444; background: rgba(239,68,68,0.1); }
+
+  /* ── Empty state ─────────────────────────────────────────────────── */
+  .empty-state {
+    text-align: center; padding: 4rem 2rem;
+    color: #475569;
+  }
+  .empty-state i { font-size: 3.5rem; margin-bottom: 1rem; display: block; }
+  .empty-state h3 { color: #94a3b8; margin-bottom: 0.5rem; }
+
+  /* ── Pagination ──────────────────────────────────────────────────── */
+  .page-link { background: #1e293b !important; border-color: #334155 !important; color: #94a3b8 !important; }
+  .page-item.active .page-link { background: #0ea5e9 !important; border-color: #0ea5e9 !important; color: #fff !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Hero Header -->
+<div class="jobs-hero">
+  <div class="hero-badge"><i class="bi bi-lightning-charge-fill"></i> Deep Scraped Results</div>
+  <h1 class="hero-title">Job Opportunities</h1>
+  <p class="hero-sub">ATS-matched jobs from {{ sources|length }} platforms, freshly scraped for your profile.</p>
+  <div class="hero-stats">
+    <div class="stat-item">
+      <span class="stat-value">{{ total_jobs }}</span>
+      <span class="stat-label">Total Jobs</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-value">{{ sources|length }}</span>
+      <span class="stat-label">Platforms</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-value">{{ jobs|selectattr('ats_score','gt',20)|list|length }}</span>
+      <span class="stat-label">High Match</span>
+    </div>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<form method="GET" action="{{ url_for('jobs.index') }}" class="toolbar" id="filterForm">
+  <div class="search-wrap">
+    <i class="bi bi-search"></i>
+    <input type="text" name="search" id="searchInput" placeholder="Search title or company..." value="{{ search }}" autocomplete="off">
+  </div>
+
+  <select name="source" onchange="this.form.submit()">
+    <option value="">All Platforms</option>
+    {% for src in sources %}
+    <option value="{{ src }}" {% if source_filter == src %}selected{% endif %}>{{ src }}</option>
+    {% endfor %}
+  </select>
+
+  <div class="sort-btns">
+    <button type="submit" name="sort" value="recent" class="sort-btn {% if sort != 'score' %}active{% endif %}">
+      <i class="bi bi-clock me-1"></i>Recent
+    </button>
+    <button type="submit" name="sort" value="score" class="sort-btn {% if sort == 'score' %}active{% endif %}">
+      <i class="bi bi-star me-1"></i>Best Match
+    </button>
+  </div>
+
+  <a href="{{ url_for('aggregator.search_jobs_page') }}" class="btn btn-warning ms-auto-flex" style="font-size:0.85rem;padding:0.55rem 1rem;">
+    <i class="bi bi-globe me-1"></i> Run Deep Search
+  </a>
+</form>
+
+<!-- Filter Chips -->
+<div class="filter-chips">
+  <span class="chip-label">View:</span>
+  <a href="{{ url_for('jobs.index', search=search, source=source_filter, sort=sort, intern=intern_only, type=type_filter, status='') }}"
+     class="chip {% if not status_filter %}active-chip{% endif %}">
+    <i class="bi bi-funnel"></i> Default (Hide Removed)
+  </a>
+  <a href="{{ url_for('jobs.index', search=search, source=source_filter, sort=sort, intern=intern_only, type=type_filter, status='new') }}"
+     class="chip {% if status_filter == 'new' %}active-chip{% endif %}">
+    <i class="bi bi-stars"></i> New
+  </a>
+  <a href="{{ url_for('jobs.index', search=search, source=source_filter, sort=sort, intern=intern_only, type=type_filter, status='saved') }}"
+     class="chip {% if status_filter == 'saved' %}active-chip{% endif %}" style="{% if status_filter == 'saved' %}border-color: #f59e0b; color: #f59e0b; background: rgba(245,158,11,0.1);{% endif %}">
+    <i class="bi bi-bookmark-fill"></i> Bookmarked
+  </a>
+  <a href="{{ url_for('jobs.index', search=search, source=source_filter, sort=sort, intern=intern_only, type=type_filter, status='applied') }}"
+     class="chip {% if status_filter == 'applied' %}active-chip{% endif %}" style="{% if status_filter == 'applied' %}border-color: #22c55e; color: #22c55e; background: rgba(34,197,94,0.1);{% endif %}">
+    <i class="bi bi-check-circle-fill"></i> Applied
+  </a>
+  <a href="{{ url_for('jobs.index', search=search, source=source_filter, sort=sort, intern=intern_only, type=type_filter, status='dismissed') }}"
+     class="chip {% if status_filter == 'dismissed' %}active-chip{% endif %}" style="{% if status_filter == 'dismissed' %}border-color: #ef4444; color: #ef4444; background: rgba(239,68,68,0.1);{% endif %}">
+    <i class="bi bi-x-circle-fill"></i> Rejected
+  </a>
+  <a href="{{ url_for('jobs.index', search=search, source=source_filter, sort=sort, intern=intern_only, type=type_filter, status='all') }}"
+     class="chip {% if status_filter == 'all' %}active-chip{% endif %}">
+    <i class="bi bi-collection-fill"></i> All Jobs
+  </a>
+</div>
+
+<div class="filter-chips">
+  <span class="chip-label">Type Filter:</span>
+  <a href="{{ url_for('jobs.index', search=search, source=source_filter, sort=sort, intern='0', type='', status=status_filter) }}"
+     class="chip {% if not intern_only and not type_filter %}active-chip{% endif %}">
+    <i class="bi bi-grid-3x3-gap"></i> All Types
+    <span style="opacity:0.6;font-size:0.7rem;">({{ total_jobs }})</span>
+  </a>
+  <a href="{{ url_for('jobs.index', search=search, source=source_filter, sort=sort, intern='1', type='', status=status_filter) }}"
+     class="chip chip-intern {% if intern_only %}active-chip{% endif %}">
+    <i class="bi bi-mortarboard-fill"></i> Internships
+    <span style="opacity:0.6;font-size:0.7rem;">({{ intern_count }})</span>
+  </a>
+  <a href="{{ url_for('jobs.index', search=search, source=source_filter, sort=sort, intern='0', type='startup', status=status_filter) }}"
+     class="chip chip-startup {% if type_filter == 'startup' %}active-chip{% endif %}">
+    <i class="bi bi-rocket-takeoff"></i> Startups
+    <span style="opacity:0.6;font-size:0.7rem;">({{ startup_count }})</span>
+  </a>
+  <a href="{{ url_for('jobs.index', search=search, source=source_filter, sort=sort, intern='0', type='mnc', status=status_filter) }}"
+     class="chip chip-mnc {% if type_filter == 'mnc' %}active-chip{% endif %}">
+    <i class="bi bi-buildings"></i> MNC / Corporate
+  </a>
+</div>
+
+<!-- Jobs Grid -->
+{% if jobs %}
+<div class="jobs-grid">
+  {% for job in jobs %}
+  {% set score = job.ats_score or 0 %}
+  {% set score_pct = [score * 2, 100]|min %}
+  <div class="job-card status-{{ job.status }}" id="card-{{ job.id }}">
+    <!-- ATS Score colour strip -->
+    <div class="score-strip {% if score >= 30 %}score-high{% elif score >= 15 %}score-mid{% else %}score-low{% endif %}"></div>
+
+    <div class="card-top">
+      <div class="card-badges">
+        <!-- Source badge -->
+        {% set src_lower = (job.source or '')|lower %}
+        <span class="badge-source src-{{ src_lower if src_lower in ['linkedin','naukri','indeed','internshala','foundit','glassdoor','wellfound','remoteok'] else 'default' }}">
+          <i class="bi bi-{{ 'linkedin' if src_lower == 'linkedin' else 'globe2' }}"></i>
+          {{ job.source or 'Unknown' }}
+        </span>
+        <!-- Company type badge -->
+        {% set ctype = (job.company_type or '')|lower %}
+        <span class="badge-type {% if 'startup' in ctype %}type-startup{% elif 'mnc' in ctype or 'corporate' in ctype %}type-mnc{% elif 'it' in ctype %}type-it{% else %}type-default{% endif %}">
+          {% if 'startup' in ctype %}<i class="bi bi-rocket-takeoff"></i> Startup
+          {% elif 'mnc' in ctype or 'corporate' in ctype %}<i class="bi bi-buildings"></i> MNC
+          {% elif 'it' in ctype %}<i class="bi bi-cpu"></i> IT / Tech
+          {% else %}<i class="bi bi-building"></i> {{ job.company_type or 'Company' }}{% endif %}
+        </span>
+        {% if 'intern' in job.title|lower %}
+        <span class="badge-type" style="background:rgba(139,92,246,0.1);color:#c4b5fd;border:1px solid rgba(139,92,246,0.2);">
+          <i class="bi bi-mortarboard-fill"></i> Internship
+        </span>
+        {% endif %}
+        {% if job.scraped_at and job.scraped_at.startswith(today_str) %}
+        <span class="badge-new-today">
+          <i class="bi bi-fire"></i> New Today
+        </span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div>
+      <p class="job-title">{{ job.title }}</p>
+      <div class="job-company">
+        <i class="bi bi-building"></i>
+        <span>{{ job.company }}</span>
+      </div>
+    </div>
+
+    <div class="card-meta">
+      {% if job.location %}
+      <span class="meta-item"><i class="bi bi-geo-alt-fill"></i> {{ job.location[:40] }}{% if job.location|length > 40 %}…{% endif %}</span>
+      {% endif %}
+      {% if job.posted_date and job.posted_date not in ['', 'Recently'] %}
+      <span class="meta-item" title="Posted date"><i class="bi bi-calendar3"></i> {{ job.posted_date }}</span>
+      {% endif %}
+      <span class="meta-item" title="Scraped on" style="color:#475569;font-size:0.72rem;">
+        <i class="bi bi-clock-history"></i> Scraped {{ job.scraped_at|datetimeformat('%d %b') }}
+      </span>
+    </div>
+
+    <!-- ATS Score bar -->
+    <div class="ats-bar-wrap">
+      <div class="ats-bar">
+        <div class="ats-bar-fill {% if score >= 30 %}score-high{% elif score >= 15 %}score-mid{% else %}score-low{% endif %}"
+             style="width: {{ score_pct }}%; background: {% if score >= 30 %}#22c55e{% elif score >= 15 %}#f59e0b{% else %}#475569{% endif %};"></div>
+      </div>
+      <span class="ats-label {% if score >= 30 %}ats-good{% elif score >= 15 %}ats-mid{% else %}ats-low{% endif %}">
+        ATS {{ score }}
+      </span>
+    </div>
+
+    <!-- Actions -->
+    <div class="card-actions">
+      {% if job.url %}
+      <a href="{{ job.url }}" target="_blank" rel="noopener" class="btn-apply">
+        Apply <i class="bi bi-box-arrow-up-right"></i>
+      </a>
+      {% endif %}
+      <button class="btn-status {% if job.status == 'saved' %}active-saved{% endif %}"
+              title="Save" onclick="setStatus({{ job.id }}, 'saved', this)">
+        <i class="bi bi-bookmark{% if job.status == 'saved' %}-fill{% endif %}"></i>
+      </button>
+      <button class="btn-status {% if job.status == 'applied' %}active-applied{% endif %}"
+              title="Mark Applied" onclick="setStatus({{ job.id }}, 'applied', this)">
+        <i class="bi bi-check-circle{% if job.status == 'applied' %}-fill{% endif %}"></i>
+      </button>
+      <button class="btn-status {% if job.status == 'dismissed' %}active-dismissed{% endif %}"
+              title="Dismiss" onclick="setStatus({{ job.id }}, 'dismissed', this)">
+        <i class="bi bi-x-circle{% if job.status == 'dismissed' %}-fill{% endif %}"></i>
+      </button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <i class="bi bi-inbox"></i>
+  <h3>No jobs found yet.</h3>
+  <p>Run a <a href="{{ url_for('aggregator.search_jobs_page') }}">Deep Search</a> to scrape 14+ platforms.</p>
+</div>
+{% endif %}
+
+<!-- Pagination -->
+{% if pagination.pages > 1 %}
+<nav aria-label="Page navigation" class="mt-4 mb-5">
+  <ul class="pagination justify-content-center">
+    <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+      <a class="page-link" href="{{ url_for('jobs.index', page=pagination.prev_num, search=search, source=source_filter, sort=sort, intern='1' if intern_only else '0', type=type_filter) }}">Previous</a>
+    </li>
+    {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+      {% if page_num %}
+        <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+          <a class="page-link" href="{{ url_for('jobs.index', page=page_num, search=search, source=source_filter, sort=sort, intern='1' if intern_only else '0', type=type_filter) }}">{{ page_num }}</a>
+        </li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+      {% endif %}
+    {% endfor %}
+    <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+      <a class="page-link" href="{{ url_for('jobs.index', page=pagination.next_num, search=search, source=source_filter, sort=sort, intern='1' if intern_only else '0', type=type_filter) }}">Next</a>
+    </li>
+  </ul>
+</nav>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function setStatus(jobId, status, btn) {
+  try {
+    const res = await fetch(`/jobs/${jobId}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    if (res.ok) {
+      const card = document.getElementById(`card-${jobId}`);
+      // Update card class
+      card.className = card.className.replace(/status-\w+/, `status-${status}`);
+      // Update all status buttons in this card
+      card.querySelectorAll('.btn-status').forEach(b => {
+        b.classList.remove('active-saved', 'active-applied', 'active-dismissed');
+      });
+      btn.classList.add(`active-${status}`);
+      
+      const currentFilter = new URLSearchParams(window.location.search).get('status') || '';
+      if (status === 'dismissed' && currentFilter !== 'all' && currentFilter !== 'dismissed') {
+        card.style.transition = 'opacity 0.3s, transform 0.3s';
+        card.style.opacity = '0';
+        card.style.transform = 'scale(0.95)';
+        setTimeout(() => { card.style.display = 'none'; }, 300);
+      }
+    }
+  } catch(e) { console.error(e); }
+}
+
+// Live search with debounce
+let debounceTimer;
+document.getElementById('searchInput').addEventListener('input', function() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    document.getElementById('filterForm').submit();
+  }, 500);
+});
+</script>
+{% endblock %}

@@ -60,6 +60,16 @@
         </select>
       </div>
       <div class="col-6 col-md-auto">
+        <div class="form-check form-check-inline ms-1 mb-0">
+          <input class="form-check-input" type="checkbox" name="has_infopark" value="1"
+                 id="filterInfopark"
+                 {{ 'checked' if current_filters.has_infopark == '1' }}>
+          <label class="form-check-label small" for="filterInfopark">
+            <i class="bi bi-geo-alt-fill text-info me-1"></i>Infopark Applied
+          </label>
+        </div>
+      </div>
+      <div class="col-6 col-md-auto">
         <div class="d-flex gap-2">
           <button type="submit" class="btn btn-primary btn-sm">
             <i class="bi bi-funnel-fill me-1"></i> Filter
@@ -84,6 +94,9 @@
           <th>Score</th>
           <th>Status</th>
           <th>Call</th>
+          <th class="d-none d-md-table-cell text-center">
+            <i class="bi bi-geo-alt-fill text-info me-1" title="Infopark Applied"></i>Infopark
+          </th>
           <th class="d-none d-lg-table-cell">Last Activity</th>
           <th class="text-end">Actions</th>
         </tr>
@@ -142,6 +155,19 @@
             </div>
             {% endif %}
           </td>
+          <!-- Infopark Applied column -->
+          <td class="d-none d-md-table-cell text-center">
+            {% set ip_count = infopark_applied_counts.get(c.id, 0) %}
+            {% if ip_count > 0 %}
+            <a href="{{ url_for('infopark.infopark_jobs') }}?applied=1"
+               class="badge rounded-pill text-bg-info text-decoration-none"
+               title="{{ ip_count }} job(s) applied via Infopark">
+              <i class="bi bi-geo-alt-fill me-1"></i>{{ ip_count }} applied
+            </a>
+            {% else %}
+            <span class="text-muted small">—</span>
+            {% endif %}
+          </td>
           <td class="d-none d-lg-table-cell text-muted small">
             {{ c.last_activity_at | reltime if c.last_activity_at else 'Never' }}
           </td>
@@ -166,7 +192,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="7" class="text-center py-5 text-muted">
+          <td colspan="8" class="text-center py-5 text-muted">
             <i class="bi bi-inbox fs-2 d-block mb-2"></i>
             No companies found.
             <a href="{{ url_for('companies.upload_form') }}">Upload your XLSX</a> to get started.
@@ -259,39 +285,7 @@
   </div>
 </div>
 
-<!-- Bulk Scan Modal -->
-<div class="modal fade" id="scanAllModal" tabindex="-1" data-bs-backdrop="static">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-search me-2"></i>Scanning All Career Pages</h5>
-      </div>
-      <div class="modal-body">
-        <p class="text-muted mb-2">Scanning career pages for all companies with a listed URL. This may take a few minutes.</p>
-        <div class="progress mb-3" style="height:20px;">
-          <div class="progress-bar progress-bar-striped progress-bar-animated bg-success"
-               id="scanProgress" role="progressbar" style="width:0%">0%</div>
-        </div>
-        <div id="scanStats" class="d-flex gap-4 text-center">
-          <div><div class="fs-4 fw-bold text-primary" id="scanDone">0</div><small class="text-muted">Scanned</small></div>
-          <div><div class="fs-4 fw-bold text-success" id="scanNew">0</div><small class="text-muted">New Jobs</small></div>
-          <div><div class="fs-4 fw-bold text-warning" id="scanTotal">0</div><small class="text-muted">Total Found</small></div>
-          <div><div class="fs-4 fw-bold text-danger" id="scanErrors">0</div><small class="text-muted">Errors</small></div>
-        </div>
-        <div id="scanDoneMsg" class="alert alert-success mt-3 d-none">
-          <i class="bi bi-check-circle-fill me-1"></i>
-          Scan complete! <strong id="scanDoneSummary"></strong>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary d-none" id="scanCloseBtn" data-bs-dismiss="modal">Close</button>
-        <span id="scanSpinner" class="text-muted small">
-          <span class="spinner-border spinner-border-sm me-1"></span> Running in background…
-        </span>
-      </div>
-    </div>
-  </div>
-</div>
+
 
 {% endblock %}
 
@@ -389,58 +383,17 @@ document.querySelectorAll('.call-toggle-btn').forEach(btn => {
 });
 
 // ── Scan All Jobs ─────────────────────────────────────────────────────────────
-const scanAllModal = new bootstrap.Modal(document.getElementById('scanAllModal'));
 document.getElementById('scanAllBtn').addEventListener('click', async () => {
-  // Reset UI
-  document.getElementById('scanProgress').style.width = '0%';
-  document.getElementById('scanProgress').textContent = '0%';
-  document.getElementById('scanDone').textContent = '0';
-  document.getElementById('scanNew').textContent = '0';
-  document.getElementById('scanTotal').textContent = '0';
-  document.getElementById('scanErrors').textContent = '0';
-  document.getElementById('scanDoneMsg').classList.add('d-none');
-  document.getElementById('scanCloseBtn').classList.add('d-none');
-  document.getElementById('scanSpinner').classList.remove('d-none');
-  scanAllModal.show();
-
-  // Start bulk scan
-  let jobId;
   try {
     const res = await fetch('/scrape/jobs/all', { method: 'POST' });
-    const d = await res.json();
-    jobId = d.job_id;
+    if (res.ok) {
+      alert("Scan started! You can navigate the app while it runs in the background.");
+    } else {
+      alert("Failed to start scan.");
+    }
   } catch(e) {
     alert('Failed to start scan: ' + e);
-    scanAllModal.hide();
-    return;
   }
-
-  // Poll status every 3 seconds
-  const poll = setInterval(async () => {
-    try {
-      const res = await fetch(`/scrape/status/${jobId}`);
-      const d = await res.json();
-
-      const pct = d.total > 0 ? Math.round((d.done / d.total) * 100) : 0;
-      document.getElementById('scanProgress').style.width = pct + '%';
-      document.getElementById('scanProgress').textContent = pct + '%';
-      document.getElementById('scanDone').textContent = `${d.done} / ${d.total}`;
-      document.getElementById('scanNew').textContent = d.new_count;
-      document.getElementById('scanTotal').textContent = d.openings_found;
-      document.getElementById('scanErrors').textContent = d.errors.length;
-
-      if (d.status === 'done') {
-        clearInterval(poll);
-        document.getElementById('scanSpinner').classList.add('d-none');
-        document.getElementById('scanCloseBtn').classList.remove('d-none');
-        document.getElementById('scanDoneMsg').classList.remove('d-none');
-        document.getElementById('scanDoneSummary').textContent =
-          `${d.new_count} new job openings found across ${d.total} companies.`;
-      }
-    } catch(e) {
-      // Ignore transient errors while polling
-    }
-  }, 3000);
 });
 </script>
 {% endblock %}
