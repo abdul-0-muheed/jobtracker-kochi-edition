@@ -2,6 +2,112 @@
 CHANGES LOG - Job Tracker Local Runner
 ============================================================
 
+[2026-07-17 BATCH 6.3] ADD PHONE NUMBERS TO PROMPT
+- Modified the simplified prompt strings in both detail.html and list.html to explicitly ask the AI agent to extract and return phone numbers in addition to verified emails.
+
+[2026-07-17 BATCH 6.2] PROMPT SIMPLIFICATION — FOCUS ON VERIFIED EMAILS & VALID INTERN JOBS
+
+PROBLEM SOLVED:
+  - The multi-source prompts from BATCH 6.1 were too heavy and took too long for the agent to complete.
+  - The user's main focus is strictly getting verified company employee emails and currently valid intern openings (not closed).
+
+MODIFIED FILES:
+  - templates/companies/detail.html — simplified p1 and p2 prompt strings
+  - templates/companies/list.html   — simplified p1 and p2 prompt strings
+
+CHANGES:
+  Prompt 1 (Contact & Intern Job Research) is now lightweight:
+    - Instructs the agent to find emails on website, LinkedIn, and Hunter.io.
+    - Emphasizes verifying EVERY email on getprospect.com (VALID/DELIVERABLE only).
+    - Instructs checking career page & LinkedIn for Intern/Fresher jobs.
+    - Explicitly asks to confirm jobs are CURRENTLY OPEN and accepting applications.
+    - Clean 3-part deliverable: Verified Emails, Open Intern Jobs, Failed/Unverified Emails.
+
+  Prompt 2 (Email Pattern + Intelligence Scan) is now a fallback:
+    - Instructs the agent to guess the email pattern if direct HR emails can't be found.
+    - Uses Hunter.io/Apollo.io for the pattern and LinkedIn for HR/Recruiter names.
+    - Generates likely emails and verifies them on getprospect.com.
+    - Delivers the pattern used and the top 3 verified (or most likely) HR emails.
+
+[2026-07-17 BATCH 6.1] PROMPT UPGRADE — MULTI-SOURCE CONTACT HUNTING
+
+PROBLEM SOLVED:
+  - Old prompts only searched the company website and LinkedIn.
+  - Upgraded prompts now instruct the agent to search 10+ sources for contacts and emails.
+
+MODIFIED FILES:
+  - templates/companies/detail.html — upgraded p1 and p2 prompt strings + expanded Quick Links panel
+  - templates/companies/list.html   — same upgrades for prompt-shortcut-btn handler + buildListPromptLinks function
+
+CHANGES:
+  Prompt 1 (Contact & Intern Job Research) now covers:
+    - Company website (Contact, About, Team, Footer pages)
+    - Hunter.io domain search
+    - Apollo.io people search
+    - RocketReach employee search
+    - SignalHire HR search
+    - ContactOut employee lookup
+    - LinkedIn company page + LinkedIn Jobs
+    - Wellfound / AngelList team contacts + job listings
+    - Glassdoor job listings + reviews
+    - Crunchbase founders and executive contacts
+    - Google advanced search + Google dorks (site:linkedin.com/in)
+    - GitHub org pages and public employee emails
+    - Twitter/X company hiring posts
+    - Press releases, blog posts, news articles
+    - Indeed, Naukri, Internshala, Shine, Cutshort job boards
+    Output format: Name | Role | Email | Phone | Source table + job listing table + failed emails
+
+  Prompt 2 (Email Pattern + Intelligence Scan) now covers:
+    Step 1 — Discover email pattern (Hunter.io + Apollo + RocketReach)
+    Step 2 — Find real HR contacts (LinkedIn + Google dorks + Wellfound + Crunchbase)
+    Step 3 — Verify all emails on GetProspect (only VALID/DELIVERABLE)
+    Step 4 — Cross-check job listings (LinkedIn, Indeed, Naukri, Internshala, Cutshort, Wellfound)
+    Step 5 — Re-verify and provide top 3 guessed emails if none found
+    Output: HR contacts table + email pattern + open jobs + guessed emails fallback
+
+  Quick Links panel now includes 8 links per company:
+    Website, Careers, Hunter.io (with domain), Email Verifier, Apollo.io, RocketReach,
+    SignalHire, Crunchbase, LinkedIn, Wellfound — all pre-populated with company name/domain
+
+[2026-07-17 BATCH 6] AI PROMPT BUTTON + COPY LINK FOR COMPANIES
+
+PROBLEM SOLVED:
+  - Needed a fast way to generate AI agent prompts for each company (find HR contacts, verify emails, check intern jobs).
+  - Needed a quick-copy button per company row to grab detail page URL without navigating.
+  - Needed 2 pre-crafted, ready-to-paste prompts that dynamically inject the company name, website, and career URL.
+
+MODIFIED FILES:
+  - templates/companies/detail.html:
+      - Added "🤖 Prompt" button in the Quick Actions sidebar card (btn-outline-success).
+      - Added Prompt Modal (dark GitHub-style #0d1117 theme) with:
+          * Quick Copy Links panel (Website, Careers, Email Verifier, Hunter.io) — each with a copy-to-clipboard button.
+          * Prompt 1 — "Contact & Intern Job Research": visits company website, finds HR/employee emails/phones, verifies via getprospect.com, checks for open intern/fresher listings, double-verifies all.
+          * Prompt 2 — "Deep LinkedIn & Career Page Scan": LinkedIn company search, career page scrape, cross-reference with Indeed, find HR contact, verify email, confirm all jobs are still open.
+          * Individual Copy buttons per prompt + "Copy All Prompts" button.
+      - All prompts are dynamically built with JS using company.website, company.name, company.career_page_url data attributes.
+
+  - templates/companies/list.html:
+      - Added 📋 (copy-link) button to each row's Actions column — copies the detail page URL to clipboard instantly with visual feedback.
+      - Added 🤖 (robot) Prompt shortcut button to each row — opens identical dark Prompt Modal directly from the list view without navigating to the detail page.
+      - Added listPromptModal HTML (same 2 prompts + quick links, separate IDs for list vs detail).
+      - Added JS handlers: copy-link-btn (clipboard copy + green flash), prompt-shortcut-btn (modal open + prompt fill), listCopyPrompt1Btn, listCopyPrompt2Btn, listCopyAllPromptsBtn.
+
+PROMPT CONTENT:
+  Prompt 1 (blue badge):
+    Go to [COMPANY WEBSITE] — find all HR/employee emails and phone numbers.
+    Verify each email on https://getprospect.com/email-verifier (only deliver valid/deliverable).
+    Check for open intern/fresher listings on career page and website.
+    Verify each listing is still open and accepting applications.
+    Double-check all details twice. Deliver structured summary.
+
+  Prompt 2 (purple badge):
+    LinkedIn company search — employee count, recent posts, intern/entry-level jobs.
+    Career page + website scrape — all current open roles.
+    Cross-reference LinkedIn Jobs + Indeed (last 30 days).
+    Find HR manager email via LinkedIn, verify on getprospect.
+    Confirm all listings still open. Return structured report, verified twice.
+
 [2026-07-16 BATCH 5] JOBS PAGE FILTERS AND TODAY BADGES
 
 PROBLEM SOLVED:
@@ -103,3 +209,14 @@ BUGS FIXED (Batch 1):
   - ImportError: scheduler → replaced with threading.Thread
 
 ============================================================
+
+SESSION 6 (Prompt Engineering)
+-----------------------
+- Rewrote user's agent prompt for faster execution, focusing strictly on finding verified internship contacts (HR/Managers) and removing slow steps like scraping career pages or listing failed emails.
+- FIXED: list.html phone number editing (added inline edit UI directly on the list page)
+- FIXED: Javascript syntax error in detail.html preventing the save phone and deep scan buttons from working
+
+SESSION 7 (Question Answered & Branch Auto-Switching)
+-----------------------
+- Answered a user query about which branch code runs when executing `start.bat`.
+- MODIFIED: start.bat to automatically save the current branch, checkout `main` before running the Python script, and checkout the saved original branch when the script exits.

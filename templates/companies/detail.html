@@ -53,13 +53,13 @@
       {% set current_idx = stages.index(company.contact_status) if company.contact_status in stages else 0 %}
       {% for stage in stages %}
       {% set stage_idx = loop.index0 %}
-      <div class="stepper-item {{ 'active' if stage_idx == current_idx else 'completed' if stage_idx < current_idx else '' }}">
+      <div
+        class="stepper-item {{ 'active' if stage_idx == current_idx else 'completed' if stage_idx < current_idx else '' }}">
         <div class="stepper-dot">
-          {% if stage_idx < current_idx %}
-          <i class="bi bi-check-lg"></i>
-          {% else %}
-          {{ loop.index }}
-          {% endif %}
+          {% if stage_idx < current_idx %} <i class="bi bi-check-lg"></i>
+            {% else %}
+            {{ loop.index }}
+            {% endif %}
         </div>
         <div class="stepper-label">{{ stage.replace('_', ' ').title() }}</div>
       </div>
@@ -139,6 +139,10 @@
         <button class="btn btn-outline-primary btn-sm mt-1" id="deepScanBtn">
           <i class="bi bi-linkedin me-1"></i> Deep Scan (LinkedIn)
         </button>
+        <button class="btn btn-outline-success btn-sm mt-1" id="promptBtn" data-website="{{ company.website or '' }}"
+          data-name="{{ company.name }}" data-career="{{ company.career_page_url or '' }}">
+          <i class="bi bi-robot me-1"></i> 🤖 Prompt
+        </button>
 
         <!-- Edit status -->
         <form method="POST" action="{{ url_for('companies.update_company', cid=company.id) }}" class="mt-2">
@@ -146,7 +150,7 @@
           <div class="input-group input-group-sm">
             <select class="form-select form-select-sm" name="contact_status">
               {% for s in ['not_contacted','emailed','replied','interviewing','offered','rejected','cold'] %}
-              <option value="{{ s }}" {{ 'selected' if company.contact_status == s }}>
+              <option value="{{ s }}" {{ 'selected' if company.contact_status==s }}>
                 {{ s.replace('_', ' ').title() }}
               </option>
               {% endfor %}
@@ -221,9 +225,8 @@
           <label class="form-label small fw-semibold">Phone Number</label>
           <div class="input-group input-group-sm">
             <span class="input-group-text"><i class="bi bi-phone"></i></span>
-            <input type="tel" class="form-control" id="phoneInput"
-                   placeholder="e.g. +91 98765 43210"
-                   value="{{ company.phone_number or '' }}">
+            <input type="tel" class="form-control" id="phoneInput" placeholder="e.g. +91 98765 43210"
+              value="{{ company.phone_number or '' }}">
             <button class="btn btn-outline-primary" id="savePhoneBtn" type="button">Save</button>
           </div>
           <div class="form-text" id="phoneSaveMsg"></div>
@@ -233,13 +236,13 @@
         <div>
           <label class="form-label small fw-semibold d-block">Call Status</label>
           {% if company.call_status == 'called' %}
-          <button class="btn btn-sm btn-success w-100" id="callToggleBtn"
-                  data-cid="{{ company.id }}" data-status="called">
+          <button class="btn btn-sm btn-success w-100" id="callToggleBtn" data-cid="{{ company.id }}"
+            data-status="called">
             <i class="bi bi-telephone-check-fill me-1"></i> Called ✓ — Click to undo
           </button>
           {% else %}
-          <button class="btn btn-sm btn-outline-danger w-100" id="callToggleBtn"
-                  data-cid="{{ company.id }}" data-status="not_called">
+          <button class="btn btn-sm btn-outline-danger w-100" id="callToggleBtn" data-cid="{{ company.id }}"
+            data-status="not_called">
             <i class="bi bi-telephone-x me-1"></i> Not Called — Click to mark as called
           </button>
           {% endif %}
@@ -257,12 +260,12 @@
           <div class="mb-3">
             <label class="form-label small fw-semibold">HR Email</label>
             <input type="text" class="form-control form-control-sm" name="hr_email"
-                   value="{{ company.hr_email or '' }}">
+              value="{{ company.hr_email or '' }}">
           </div>
           <div class="mb-3">
             <label class="form-label small fw-semibold">Career Page URL</label>
             <input type="text" class="form-control form-control-sm" name="career_page_url"
-                   value="{{ company.career_page_url or '' }}">
+              value="{{ company.career_page_url or '' }}">
           </div>
           <div class="mb-3">
             <label class="form-label small fw-semibold">Notes</label>
@@ -288,8 +291,8 @@
         <div class="modal-body">
           <div class="mb-3">
             <label class="form-label fw-semibold">Recipient Email</label>
-            <input type="email" class="form-control" name="recipient_email"
-                   value="{{ company.hr_email or '' }}" placeholder="hr@company.com">
+            <input type="email" class="form-control" name="recipient_email" value="{{ company.hr_email or '' }}"
+              placeholder="hr@company.com">
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Subject</label>
@@ -340,134 +343,388 @@
     </div>
   </div>
 </div>
+<!-- ── Prompt Modal ─────────────────────────────────────────────────────────── -->
+<div class="modal fade" id="promptModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content" style="background: #0d1117; border: 1px solid #30363d;">
+      <div class="modal-header" style="border-bottom: 1px solid #30363d;">
+        <h5 class="modal-title" style="color:#58a6ff;">
+          <i class="bi bi-robot me-2"></i>AI Agent Prompts — <span id="promptCompanyName"></span>
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="background: #0d1117;">
+
+        <!-- Quick Copy Links -->
+        <div class="mb-3 p-3 rounded" style="background:#161b22; border:1px solid #30363d;">
+          <div class="fw-semibold small mb-2" style="color:#8b949e;"><i class="bi bi-link-45deg me-1"></i>Quick Copy
+            Links</div>
+          <div class="d-flex flex-wrap gap-2" id="promptQuickLinks">
+            <!-- dynamically filled -->
+          </div>
+        </div>
+
+        <!-- Prompt 1 -->
+        <div class="mb-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="badge" style="background:#1f6feb; font-size:0.75rem;">Prompt 1 — Contact &amp; Intern Job
+              Research</span>
+            <button class="btn btn-sm" style="background:#238636; color:#fff; font-size:0.75rem;" id="copyPrompt1Btn">
+              <i class="bi bi-clipboard me-1"></i>Copy
+            </button>
+          </div>
+          <textarea class="form-control font-monospace" id="prompt1Text" rows="10"
+            style="background:#161b22; color:#e6edf3; border:1px solid #30363d; font-size:0.78rem; resize:vertical;"
+            readonly></textarea>
+        </div>
+
+        <!-- Prompt 2 -->
+        <div class="mb-1">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="badge" style="background:#6e40c9; font-size:0.75rem;">Prompt 2 — Deep LinkedIn &amp; Career
+              Page Scan</span>
+            <button class="btn btn-sm" style="background:#238636; color:#fff; font-size:0.75rem;" id="copyPrompt2Btn">
+              <i class="bi bi-clipboard me-1"></i>Copy
+            </button>
+          </div>
+          <textarea class="form-control font-monospace" id="prompt2Text" rows="8"
+            style="background:#161b22; color:#e6edf3; border:1px solid #30363d; font-size:0.78rem; resize:vertical;"
+            readonly></textarea>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top: 1px solid #30363d; background:#0d1117;">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        <button class="btn btn-sm" style="background:#1f6feb; color:#fff;" id="copyAllPromptsBtn">
+          <i class="bi bi-clipboard-check me-1"></i>Copy All Prompts
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-document.getElementById('detailEmailDate').valueAsDate = new Date();
-// Default follow-up = 5 days from now
-const fuDate = new Date();
-fuDate.setDate(fuDate.getDate() + 5);
-document.getElementById('followupDate').valueAsDate = fuDate;
+  document.getElementById('detailEmailDate').valueAsDate = new Date();
+  // Default follow-up = 5 days from now
+  const fuDate = new Date();
+  fuDate.setDate(fuDate.getDate() + 5);
+  document.getElementById('followupDate').valueAsDate = fuDate;
 
-const logEmailModal    = new bootstrap.Modal(document.getElementById('logEmailModal'));
-const followupModal    = new bootstrap.Modal(document.getElementById('followupModal'));
+  const logEmailModal = new bootstrap.Modal(document.getElementById('logEmailModal'));
+  const followupModal = new bootstrap.Modal(document.getElementById('followupModal'));
+  const promptModal = new bootstrap.Modal(document.getElementById('promptModal'));
 
-document.getElementById('logEmailBtn').addEventListener('click', () => logEmailModal.show());
-document.getElementById('scheduleFollowupBtn').addEventListener('click', () => followupModal.show());
+  document.getElementById('logEmailBtn').addEventListener('click', () => logEmailModal.show());
+  document.getElementById('scheduleFollowupBtn').addEventListener('click', () => followupModal.show());
 
-// Scan jobs
-document.getElementById('scanJobsBtn').addEventListener('click', async () => {
-  const btn = document.getElementById('scanJobsBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Scanning…';
-  try {
-    const res = await fetch(`/scrape/jobs/{{ company.id }}`, { method: 'POST' });
-    const data = await res.json();
-    alert(`Found ${data.openings_found} openings (${data.new_count} new). Refresh to see updates.`);
-    location.reload();
-  } catch(e) {
-    alert('Scan failed.');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-search me-1"></i> Scan Jobs';
-  }
-});
+  // ── Prompt Modal ──────────────────────────────────────────────────────────────
+  document.getElementById('promptBtn').addEventListener('click', () => {
+    const btn = document.getElementById('promptBtn');
+    const website = btn.dataset.website || '';
+    const name = btn.dataset.name || '';
+    const career = btn.dataset.career || '';
 
-// Mark done buttons
-document.querySelectorAll('.mark-done-btn').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const fuid = btn.dataset.fuid;
-    const res = await fetch(`/companies/follow-ups/${fuid}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'done' }),
+    document.getElementById('promptCompanyName').textContent = name;
+
+    // -- Quick Links --
+    const linksContainer = document.getElementById('promptQuickLinks');
+    linksContainer.innerHTML = '';
+    const links = [];
+    if (website) links.push({ label: '🌐 Website', url: website });
+    if (career) links.push({ label: '💼 Careers', url: career });
+    const domain = (website || '').replace(/^https?:\/\//, '').split('/')[0];
+    if (domain) links.push({ label: '🥊 Hunter.io', url: `https://hunter.io/search/${domain}` });
+    links.push({ label: '🔍 Email Verifier', url: 'https://getprospect.com/email-verifier' });
+    links.push({ label: '🚀 Apollo.io', url: `https://app.apollo.io/#/people?organizationNames[]=${encodeURIComponent(name)}` });
+    links.push({ label: '🔖 RocketReach', url: `https://rocketreach.co/search?query=${encodeURIComponent(name)}` });
+    links.push({ label: '📡 SignalHire', url: `https://www.signalhire.com/search/people?query=${encodeURIComponent(name)}` });
+    links.push({ label: '📊 Crunchbase', url: `https://www.crunchbase.com/search/organizations/field/organizations/facet_ids/${encodeURIComponent(name.toLowerCase().replace(/\s+/g, '-'))}` });
+    links.push({ label: '🔗 LinkedIn', url: `https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(name)}` });
+    links.push({ label: '📝 Wellfound', url: `https://wellfound.com/company/${encodeURIComponent(name.toLowerCase().replace(/\s+/g, '-'))}` });
+
+    links.forEach(({ label, url }) => {
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.className = 'btn btn-xs';
+      a.style.cssText = 'background:#21262d;color:#58a6ff;border:1px solid #30363d;font-size:0.72rem;padding:3px 8px;';
+      a.textContent = label;
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'btn btn-xs ms-1';
+      copyBtn.style.cssText = 'background:#21262d;color:#8b949e;border:1px solid #30363d;font-size:0.7rem;padding:2px 6px;';
+      copyBtn.title = 'Copy URL';
+      copyBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
+      copyBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        navigator.clipboard.writeText(url);
+        copyBtn.innerHTML = '<i class="bi bi-check"></i>';
+        setTimeout(() => { copyBtn.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 1500);
+      });
+      const wrap = document.createElement('span');
+      wrap.className = 'd-inline-flex align-items-center gap-0';
+      wrap.appendChild(a);
+      wrap.appendChild(copyBtn);
+      linksContainer.appendChild(wrap);
     });
-    if (res.ok) {
-      btn.closest('.action-item').remove();
-    }
-  });
-});
 
-// Save phone number
-const savePhoneBtn = document.getElementById('savePhoneBtn');
-if (savePhoneBtn) {
-  savePhoneBtn.addEventListener('click', async () => {
-    const cid = document.getElementById('callToggleBtn').dataset.cid;
-    const phone = document.getElementById('phoneInput').value.trim();
-    const msg = document.getElementById('phoneSaveMsg');
-    savePhoneBtn.disabled = true;
-    savePhoneBtn.textContent = '…';
-    try {
-      const res = await fetch(`/companies/${cid}/save-phone`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-        body: JSON.stringify({ phone_number: phone }),
-      });
-      const d = await res.json();
-      msg.textContent = d.success ? '✓ Saved!' : 'Save failed.';
-      msg.className = d.success ? 'form-text text-success' : 'form-text text-danger';
-    } catch(e) {
-      msg.textContent = 'Error saving.';
-      msg.className = 'form-text text-danger';
-    } finally {
-      savePhoneBtn.disabled = false;
-      savePhoneBtn.textContent = 'Save';
-      setTimeout(() => { msg.textContent = ''; }, 3000);
-    }
-  });
-}
+    // -- Prompt 1: Contact Research + Intern Job Hunting --
+    //     const p1 = `Find verified employee/HR emails, phone numbers, and active intern openings for "${name}"${website ? (' (website: ' + website + ')') : ''}.
 
-// Call status toggle on detail page
-const callToggleBtn = document.getElementById('callToggleBtn');
-if (callToggleBtn) {
-  callToggleBtn.addEventListener('click', async () => {
-    const cid = callToggleBtn.dataset.cid;
-    callToggleBtn.disabled = true;
-    try {
-      const res = await fetch(`/companies/${cid}/toggle-call`, {
-        method: 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    // 1. Find emails and phone numbers on their website, LinkedIn, and Hunter.io.
+    // 2. VERIFY EVERY EMAIL on https://getprospect.com/email-verifier. Only return VALID/DELIVERABLE emails.
+    // 3. Check their career page${career ? (' (' + career + ')') : ''} and LinkedIn for Intern/Fresher jobs.
+    // 4. CONFIRM jobs are CURRENTLY OPEN and accepting applications (skip closed/expired ones).
+
+    // Deliver:
+    // - \u2709\ufe0f Verified Contacts (Name | Role | Email | Linkedin | Phone)
+    // - \ud83d\udcbc Open Intern Jobs (Title | Link | Deadline)
+    // - \u274c Failed/Unverified Emails (so I don't use them)`;
+    const p1 = `Research "${name}"${website ? ` (Official Website: ${website})` : ""}.
+
+    PRIMARY PRIORITY (90% effort):
+    Find VERIFIED employee and HR contact information.
+
+    Search aggressively across any trustworthy public source, including:
+    - Official company website
+    - Contact/About/Team pages
+    - LinkedIn (Company + Employees)
+    - Hunter.io
+    - Apollo.io
+    - RocketReach
+    - GetProspect
+    - SignalHire
+    - Clearbit
+    - Lusha
+    - ZoomInfo (public results)
+    - Google Search
+    - Bing Search
+    - GitHub
+    - Crunchbase
+    - Any other public website containing employee contact information.
+
+    Requirements:
+    - Find HR, Recruiters, Talent Acquisition, Founders, Engineering Managers, Team Leads and company contacts.
+    - Find every publicly available email.
+    - Find employee and company phone numbers.
+    - Search multiple sources before giving up.
+    - Verify every email using GetProspect or another reliable verifier.
+    - Mark each email as VALID, DELIVERABLE, RISKY, INVALID or UNKNOWN.
+    - NEVER invent email addresses.
+    - Include the source URL for every email and phone number.
+
+    SECONDARY PRIORITY (10% effort):
+    Quickly check ONLY:
+    - Official Careers page
+    - LinkedIn Jobs
+
+    If internship/fresher openings are found, list them.
+    Do NOT spend time searching many job boards.
+
+    Deliver:
+
+    📧 Verified Contacts
+    Name | Role | Email | Verification | LinkedIn | Phone | Source
+
+    ☎️ Company Numbers
+    Department | Phone | Source
+
+    💼 Internships (if found)
+    Title | Apply Link
+
+    ❌ Unverified Emails
+    Email | Reason | Source`;
+
+    // -- Prompt 2: Email Pattern + Intelligence Scan --
+    //     const p2 = `If you can't find direct HR emails for "${name}"${website ? (' (' + website + ')') : ''}, guess the email pattern.
+
+    // 1. Check Hunter.io / Apollo.io to find the company's email format (e.g. first.last@domain.com) and any phone numbers.
+    // 2. Find the names of HR, Recruiters, or Talent Acquisition on LinkedIn.
+    // 3. Generate likely emails using the pattern and verify them on https://getprospect.com/email-verifier.
+
+    // Deliver:
+    // - The email pattern used
+    // - Top 3 verified (or most likely) HR contacts (Name | Title | Email | Phone)`;
+
+    //     document.getElementById('prompt1Text').value = p1;
+    //     document.getElementById('prompt2Text').value = p2;
+
+    //     promptModal.show();
+    //   });
+
+    const p2 = `If verified HR emails cannot be found for "${name}"${website ? ` (${website})` : ""}, perform an intensive contact investigation.
+
+    Priority:
+    Find contact information, NOT jobs.
+
+    Search:
+    - Hunter.io
+    - Apollo.io
+    - RocketReach
+    - GetProspect
+    - SignalHire
+    - Lusha
+    - LinkedIn
+    - Official Website
+    - GitHub
+    - Google
+    - Bing
+    - Any trustworthy public source.
+
+    Tasks:
+    1. Determine the company's email pattern.
+    2. Find HR, Recruiters, Hiring Managers, Founders, CTOs, Engineering Managers and Team Leads.
+    3. Generate possible emails ONLY if the company email pattern is confirmed.
+    4. Verify generated emails whenever possible.
+    5. Find public phone numbers for each contact.
+    6. Never claim an email is verified unless a verifier confirms it.
+
+    Deliver:
+
+    📌 Email Pattern
+
+    👥 Best Contacts
+    Name | Role | Email | Verification | Phone | LinkedIn | Source
+
+    ☎️ Company Numbers
+    Department | Phone | Source`;
+
+    // Copy helpers
+    function copyText(textareaId, btnId) {
+      const text = document.getElementById(textareaId).value;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById(btnId);
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<i class="bi bi-check me-1"></i>Copied!';
+        btn.style.background = '#2ea043';
+        setTimeout(() => { btn.innerHTML = orig; btn.style.background = '#238636'; }, 2000);
       });
-      const d = await res.json();
-      if (d.call_status === 'called') {
-        callToggleBtn.className = 'btn btn-sm btn-success w-100';
-        callToggleBtn.innerHTML = '<i class="bi bi-telephone-check-fill me-1"></i> Called ✓ — Click to undo';
-        callToggleBtn.dataset.status = 'called';
-      } else {
-        callToggleBtn.className = 'btn btn-sm btn-outline-danger w-100';
-        callToggleBtn.innerHTML = '<i class="bi bi-telephone-x me-1"></i> Not Called — Click to mark as called';
-        callToggleBtn.dataset.status = 'not_called';
+    }
+
+    document.getElementById('copyPrompt1Btn').addEventListener('click', () => copyText('prompt1Text', 'copyPrompt1Btn'));
+    document.getElementById('copyPrompt2Btn').addEventListener('click', () => copyText('prompt2Text', 'copyPrompt2Btn'));
+    document.getElementById('copyAllPromptsBtn').addEventListener('click', () => {
+      const both = document.getElementById('prompt1Text').value + '\n\n---\n\n' + document.getElementById('prompt2Text').value;
+      navigator.clipboard.writeText(both).then(() => {
+        const btn = document.getElementById('copyAllPromptsBtn');
+        btn.innerHTML = '<i class="bi bi-check me-1"></i>Copied All!';
+        setTimeout(() => { btn.innerHTML = '<i class="bi bi-clipboard-check me-1"></i>Copy All Prompts'; }, 2000);
+      });
+    });
+
+    // Scan jobs
+    document.getElementById('scanJobsBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('scanJobsBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Scanning…';
+      try {
+        const res = await fetch(`/scrape/jobs/{{ company.id }}`, { method: 'POST' });
+        const data = await res.json();
+        alert(`Found ${data.openings_found} openings (${data.new_count} new). Refresh to see updates.`);
+        location.reload();
+      } catch (e) {
+        alert('Scan failed.');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-search me-1"></i> Scan Jobs';
       }
-    } finally {
-      callToggleBtn.disabled = false;
+    });
+
+    // Mark done buttons
+    document.querySelectorAll('.mark-done-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const fuid = btn.dataset.fuid;
+        const res = await fetch(`/companies/follow-ups/${fuid}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'done' }),
+        });
+        if (res.ok) {
+          btn.closest('.action-item').remove();
+        }
+      });
+    });
+
+    // Save phone number
+    const savePhoneBtn = document.getElementById('savePhoneBtn');
+    if (savePhoneBtn) {
+      savePhoneBtn.addEventListener('click', async () => {
+        const cid = document.getElementById('callToggleBtn').dataset.cid;
+        const phone = document.getElementById('phoneInput').value.trim();
+        const msg = document.getElementById('phoneSaveMsg');
+        savePhoneBtn.disabled = true;
+        savePhoneBtn.textContent = '…';
+        try {
+          const res = await fetch(`/companies/${cid}/save-phone`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify({ phone_number: phone }),
+          });
+          const d = await res.json();
+          msg.textContent = d.success ? '✓ Saved!' : 'Save failed.';
+          msg.className = d.success ? 'form-text text-success' : 'form-text text-danger';
+        } catch (e) {
+          msg.textContent = 'Error saving.';
+          msg.className = 'form-text text-danger';
+        } finally {
+          savePhoneBtn.disabled = false;
+          savePhoneBtn.textContent = 'Save';
+          setTimeout(() => { msg.textContent = ''; }, 3000);
+        }
+      });
     }
-    // Deep Scan (LinkedIn)
-  });
-}
 
-  document.getElementById('deepScanBtn')?.addEventListener('click', async () => {
-    const btn = document.getElementById('deepScanBtn');
-    const originalHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="bi bi-hourglass-split spin me-1"></i> Deep Scanning...';
+    // Call status toggle on detail page
+    const callToggleBtn = document.getElementById('callToggleBtn');
+    if (callToggleBtn) {
+      callToggleBtn.addEventListener('click', async () => {
+        const cid = callToggleBtn.dataset.cid;
+        callToggleBtn.disabled = true;
+        try {
+          const res = await fetch(`/companies/${cid}/toggle-call`, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          });
+          const d = await res.json();
+          if (d.call_status === 'called') {
+            callToggleBtn.className = 'btn btn-sm btn-success w-100';
+            callToggleBtn.innerHTML = '<i class="bi bi-telephone-check-fill me-1"></i> Called ✓ — Click to undo';
+            callToggleBtn.dataset.status = 'called';
+          } else {
+            callToggleBtn.className = 'btn btn-sm btn-outline-danger w-100';
+            callToggleBtn.innerHTML = '<i class="bi bi-telephone-x me-1"></i> Not Called — Click to mark as called';
+            callToggleBtn.dataset.status = 'not_called';
+          }
+        } finally {
+          callToggleBtn.disabled = false;
+        }
+        // Deep Scan (LinkedIn)
+      });
+    }
 
-    try {
-      const res = await fetch(`/linkedin_scraper/scan/${companyId}`, { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
-        alert(`Deep Scan complete! Added ${data.added} jobs, updated ${data.updated}.`);
-        setTimeout(() => location.reload(), 2000);
-      } else {
-        alert(data.error || 'Deep scan failed');
+    document.getElementById('deepScanBtn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('deepScanBtn');
+      const originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="bi bi-hourglass-split spin me-1"></i> Deep Scanning...';
+
+      try {
+        const res = await fetch(`/linkedin_scraper/scan/${companyId}`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          alert(`Deep Scan complete! Added ${data.added} jobs, updated ${data.updated}.`);
+          setTimeout(() => location.reload(), 2000);
+        } else {
+          alert(data.error || 'Deep scan failed');
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+        }
+      } catch (e) {
+        alert('Network error during deep scan');
         btn.disabled = false;
         btn.innerHTML = originalHtml;
       }
-    } catch(e) {
-      alert('Network error during deep scan');
-      btn.disabled = false;
-      btn.innerHTML = originalHtml;
-    }
-  });
+    });
 </script>
 {% endblock %}

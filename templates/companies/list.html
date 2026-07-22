@@ -28,14 +28,14 @@
         <div class="input-group input-group-sm">
           <span class="input-group-text"><i class="bi bi-search"></i></span>
           <input type="text" class="form-control" name="q" placeholder="Search company…"
-                 value="{{ current_filters.q }}">
+            value="{{ current_filters.q }}">
         </div>
       </div>
       <div class="col-6 col-md-3 col-lg-2">
         <select class="form-select form-select-sm" name="industry">
           <option value="">All industries</option>
           {% for ind in industries %}
-          <option value="{{ ind }}" {{ 'selected' if current_filters.industry == ind }}>
+          <option value="{{ ind }}" {{ 'selected' if current_filters.industry==ind }}>
             {{ ind[:30] + '…' if ind|length > 30 else ind }}
           </option>
           {% endfor %}
@@ -45,7 +45,7 @@
         <select class="form-select form-select-sm" name="status">
           <option value="">All statuses</option>
           {% for s in ['not_contacted','emailed','replied','interviewing','offered','rejected','cold'] %}
-          <option value="{{ s }}" {{ 'selected' if current_filters.status == s }}>
+          <option value="{{ s }}" {{ 'selected' if current_filters.status==s }}>
             {{ s.replace('_', ' ').title() }}
           </option>
           {% endfor %}
@@ -53,17 +53,16 @@
       </div>
       <div class="col-6 col-md-3 col-lg-2">
         <select class="form-select form-select-sm" name="sort">
-          <option value="match_score_desc" {{ 'selected' if current_filters.sort == 'match_score_desc' }}>Score ↓</option>
-          <option value="match_score_asc"  {{ 'selected' if current_filters.sort == 'match_score_asc' }}>Score ↑</option>
-          <option value="name_asc"         {{ 'selected' if current_filters.sort == 'name_asc' }}>Name A–Z</option>
-          <option value="last_activity"    {{ 'selected' if current_filters.sort == 'last_activity' }}>Last Activity</option>
+          <option value="match_score_desc" {{ 'selected' if current_filters.sort=='match_score_desc' }}>Score ↓</option>
+          <option value="match_score_asc" {{ 'selected' if current_filters.sort=='match_score_asc' }}>Score ↑</option>
+          <option value="name_asc" {{ 'selected' if current_filters.sort=='name_asc' }}>Name A–Z</option>
+          <option value="last_activity" {{ 'selected' if current_filters.sort=='last_activity' }}>Last Activity</option>
         </select>
       </div>
       <div class="col-6 col-md-auto">
         <div class="form-check form-check-inline ms-1 mb-0">
-          <input class="form-check-input" type="checkbox" name="has_infopark" value="1"
-                 id="filterInfopark"
-                 {{ 'checked' if current_filters.has_infopark == '1' }}>
+          <input class="form-check-input" type="checkbox" name="has_infopark" value="1" id="filterInfopark" {{ 'checked'
+            if current_filters.has_infopark=='1' }}>
           <label class="form-check-label small" for="filterInfopark">
             <i class="bi bi-geo-alt-fill text-info me-1"></i>Infopark Applied
           </label>
@@ -112,7 +111,7 @@
               <div class="company-meta text-muted small">
                 {{ c.location or '' }}
                 {% if c.tech_stack %}
-                  · {{ c.tech_stack[:40] + '…' if c.tech_stack|length > 40 else c.tech_stack }}
+                · {{ c.tech_stack[:40] + '…' if c.tech_stack|length > 40 else c.tech_stack }}
                 {% endif %}
               </div>
             </div>
@@ -138,30 +137,44 @@
           </td>
           <!-- Call status cell -->
           <td id="call-cell-{{ c.id }}">
-            {% if c.call_status == 'called' %}
-            <button class="btn btn-xs btn-success call-toggle-btn"
-                    data-cid="{{ c.id }}" title="Mark as Not Called">
-              <i class="bi bi-telephone-check-fill me-1"></i>Called
-            </button>
-            {% else %}
-            <button class="btn btn-xs btn-outline-danger call-toggle-btn"
-                    data-cid="{{ c.id }}" title="Mark as Called">
-              <i class="bi bi-telephone-x me-1"></i>Call?
-            </button>
-            {% endif %}
-            {% if c.phone_number %}
-            <div class="text-muted" style="font-size:0.7rem;margin-top:2px;">
-              <i class="bi bi-phone me-1"></i>{{ c.phone_number }}
+            <div class="call-toggle-container">
+              {% if c.call_status == 'called' %}
+              <button class="btn btn-xs btn-success call-toggle-btn" data-cid="{{ c.id }}" title="Mark as Not Called">
+                <i class="bi bi-telephone-check-fill me-1"></i>Called
+              </button>
+              {% else %}
+              <button class="btn btn-xs btn-outline-danger call-toggle-btn" data-cid="{{ c.id }}"
+                title="Mark as Called">
+                <i class="bi bi-telephone-x me-1"></i>Call?
+              </button>
+              {% endif %}
             </div>
-            {% endif %}
+            <div class="phone-container mt-1" id="phone-container-{{ c.id }}">
+              <div class="phone-display text-muted" style="font-size:0.75rem;">
+                {% if c.phone_number %}
+                <i class="bi bi-phone me-1"></i><span class="phone-text">{{ c.phone_number }}</span>
+                <a href="#" class="edit-phone-btn ms-1 text-muted" data-cid="{{ c.id }}" title="Edit"><i
+                    class="bi bi-pencil"></i></a>
+                {% else %}
+                <a href="#" class="edit-phone-btn text-muted text-decoration-none" data-cid="{{ c.id }}"><i
+                    class="bi bi-plus-circle me-1"></i>Add Phone</a>
+                {% endif %}
+              </div>
+              <div class="phone-edit-form d-none input-group input-group-sm">
+                <input type="tel" class="form-control phone-input" style="font-size:0.75rem; padding: 0.1rem 0.25rem;"
+                  value="{{ c.phone_number or '' }}" placeholder="+91...">
+                <button class="btn btn-primary save-phone-list-btn" data-cid="{{ c.id }}"><i
+                    class="bi bi-check"></i></button>
+              </div>
+            </div>
           </td>
           <!-- Infopark Applied column -->
           <td class="d-none d-md-table-cell text-center">
             {% set ip_count = infopark_applied_counts.get(c.id, 0) %}
             {% if ip_count > 0 %}
             <a href="{{ url_for('infopark.infopark_jobs') }}?applied=1"
-               class="badge rounded-pill text-bg-info text-decoration-none"
-               title="{{ ip_count }} job(s) applied via Infopark">
+              class="badge rounded-pill text-bg-info text-decoration-none"
+              title="{{ ip_count }} job(s) applied via Infopark">
               <i class="bi bi-geo-alt-fill me-1"></i>{{ ip_count }} applied
             </a>
             {% else %}
@@ -173,19 +186,26 @@
           </td>
           <td class="text-end">
             <div class="d-flex justify-content-end gap-1">
-              <a href="{{ url_for('companies.detail', cid=c.id) }}"
-                 class="btn btn-xs btn-outline-secondary" title="View">
+              <a href="{{ url_for('companies.detail', cid=c.id) }}" class="btn btn-xs btn-outline-secondary"
+                title="View">
                 <i class="bi bi-eye"></i>
               </a>
-              <button class="btn btn-xs btn-outline-primary log-email-btn"
-                      data-cid="{{ c.id }}" data-cname="{{ c.name }}"
-                      data-email="{{ c.hr_email or '' }}"
-                      title="Log Email">
+              <button class="btn btn-xs btn-outline-secondary copy-link-btn"
+                data-url="{{ request.host_url.rstrip('/') }}{{ url_for('companies.detail', cid=c.id) }}"
+                title="Copy detail link">
+                <i class="bi bi-clipboard"></i>
+              </button>
+              <button class="btn btn-xs btn-outline-primary log-email-btn" data-cid="{{ c.id }}"
+                data-cname="{{ c.name }}" data-email="{{ c.hr_email or '' }}" title="Log Email">
                 <i class="bi bi-envelope"></i>
               </button>
-              <button class="btn btn-xs btn-outline-info scan-btn"
-                      data-cid="{{ c.id }}" title="Scan Jobs">
+              <button class="btn btn-xs btn-outline-info scan-btn" data-cid="{{ c.id }}" title="Scan Jobs">
                 <i class="bi bi-search"></i>
+              </button>
+              <button class="btn btn-xs btn-outline-success prompt-shortcut-btn"
+                data-href="{{ url_for('companies.detail', cid=c.id) }}" data-website="{{ c.website or '' }}"
+                data-name="{{ c.name }}" data-career="{{ c.career_page_url or '' }}" title="AI Prompts">
+                <i class="bi bi-robot"></i>
               </button>
             </div>
           </td>
@@ -218,15 +238,15 @@
             status=current_filters.status, sort=current_filters.sort) }}">‹</a>
         </li>
         {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
-          {% if p %}
-          <li class="page-item {{ 'active' if p == pagination.page }}">
-            <a class="page-link" href="{{ url_for('companies.list_companies', page=p,
+        {% if p %}
+        <li class="page-item {{ 'active' if p == pagination.page }}">
+          <a class="page-link" href="{{ url_for('companies.list_companies', page=p,
               q=current_filters.q, industry=current_filters.industry,
               status=current_filters.status, sort=current_filters.sort) }}">{{ p }}</a>
-          </li>
-          {% else %}
-          <li class="page-item disabled"><span class="page-link">…</span></li>
-          {% endif %}
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+        {% endif %}
         {% endfor %}
         <li class="page-item {{ 'disabled' if not pagination.has_next }}">
           <a class="page-link" href="{{ url_for('companies.list_companies', page=pagination.next_num,
@@ -257,17 +277,16 @@
           <div class="mb-3">
             <label class="form-label fw-semibold">Recipient Email</label>
             <input type="email" class="form-control" id="logEmailRecipient" name="recipient_email"
-                   placeholder="hr@company.com">
+              placeholder="hr@company.com">
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Subject</label>
-            <input type="text" class="form-control" name="subject"
-                   placeholder="Application for Software Engineer role">
+            <input type="text" class="form-control" name="subject" placeholder="Application for Software Engineer role">
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Body Excerpt</label>
             <textarea class="form-control" name="body_excerpt" rows="3"
-                      placeholder="First 200 chars of email…"></textarea>
+              placeholder="First 200 chars of email…"></textarea>
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Date Sent</label>
@@ -287,113 +306,393 @@
 
 
 
+
+<!-- ── Prompt Modal (List Page) ──────────────────────────────────────────── -->
+<div class="modal fade" id="listPromptModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content" style="background:#0d1117;border:1px solid #30363d;">
+      <div class="modal-header" style="border-bottom:1px solid #30363d;">
+        <h5 class="modal-title" style="color:#58a6ff;">
+          <i class="bi bi-robot me-2"></i>AI Agent Prompts — <span id="listPromptCompanyName"></span>
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="background:#0d1117;">
+        <!-- Quick Copy Links -->
+        <div class="mb-3 p-3 rounded" style="background:#161b22;border:1px solid #30363d;">
+          <div class="fw-semibold small mb-2" style="color:#8b949e;"><i class="bi bi-link-45deg me-1"></i>Quick Copy
+            Links</div>
+          <div class="d-flex flex-wrap gap-2" id="listPromptQuickLinks"></div>
+        </div>
+        <!-- Prompt 1 -->
+        <div class="mb-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="badge" style="background:#1f6feb;font-size:0.75rem;">Prompt 1 — Contact &amp; Intern Job
+              Research</span>
+            <button class="btn btn-sm" style="background:#238636;color:#fff;font-size:0.75rem;" id="listCopyPrompt1Btn">
+              <i class="bi bi-clipboard me-1"></i>Copy
+            </button>
+          </div>
+          <textarea class="form-control font-monospace" id="listPrompt1Text" rows="10"
+            style="background:#161b22;color:#e6edf3;border:1px solid #30363d;font-size:0.78rem;resize:vertical;"
+            readonly></textarea>
+        </div>
+        <!-- Prompt 2 -->
+        <div class="mb-1">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="badge" style="background:#6e40c9;font-size:0.75rem;">Prompt 2 — Deep LinkedIn &amp; Career Page
+              Scan</span>
+            <button class="btn btn-sm" style="background:#238636;color:#fff;font-size:0.75rem;" id="listCopyPrompt2Btn">
+              <i class="bi bi-clipboard me-1"></i>Copy
+            </button>
+          </div>
+          <textarea class="form-control font-monospace" id="listPrompt2Text" rows="8"
+            style="background:#161b22;color:#e6edf3;border:1px solid #30363d;font-size:0.78rem;resize:vertical;"
+            readonly></textarea>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid #30363d;background:#0d1117;">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        <button class="btn btn-sm" style="background:#1f6feb;color:#fff;" id="listCopyAllPromptsBtn">
+          <i class="bi bi-clipboard-check me-1"></i>Copy All Prompts
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 
 {% block scripts %}
 <script>
-// Set today's date as default
-document.getElementById('logEmailDate').valueAsDate = new Date();
+  // Set today's date as default
+  document.getElementById('logEmailDate').valueAsDate = new Date();
 
-// Log Email modal
-const logEmailModal = new bootstrap.Modal(document.getElementById('logEmailModal'));
-document.querySelectorAll('.log-email-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.getElementById('logEmailCid').value = btn.dataset.cid;
-    document.getElementById('logEmailCompany').value = btn.dataset.cname;
-    document.getElementById('logEmailRecipient').value = btn.dataset.email;
-    logEmailModal.show();
+  // Log Email modal
+  const logEmailModal = new bootstrap.Modal(document.getElementById('logEmailModal'));
+  document.querySelectorAll('.log-email-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('logEmailCid').value = btn.dataset.cid;
+      document.getElementById('logEmailCompany').value = btn.dataset.cname;
+      document.getElementById('logEmailRecipient').value = btn.dataset.email;
+      logEmailModal.show();
+    });
   });
-});
 
-document.getElementById('logEmailForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const cid = document.getElementById('logEmailCid').value;
-  const form = e.target;
-  const data = Object.fromEntries(new FormData(form));
-  const res = await fetch(`/companies/${cid}/log-email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (res.ok) {
-    logEmailModal.hide();
-    const result = await res.json();
-    alert(`Email logged! Follow-up scheduled for ${result.follow_up_due}`);
-    location.reload();
-  } else {
-    alert('Failed to log email. Please try again.');
-  }
-});
-
-// Scan jobs button
-document.querySelectorAll('.scan-btn').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const cid = btn.dataset.cid;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
-    try {
-      const res = await fetch(`/scrape/jobs/${cid}`, { method: 'POST' });
-      const data = await res.json();
-      alert(`Scan complete! Found ${data.openings_found} openings (${data.new_count} new).`);
-    } catch (e) {
-      alert('Scan failed.');
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-search"></i>';
-    }
-  });
-});
-
-// Call toggle — AJAX, no page reload
-document.querySelectorAll('.call-toggle-btn').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const cid = btn.dataset.cid;
-    btn.disabled = true;
-    try {
-      const res = await fetch(`/companies/${cid}/toggle-call`, {
-        method: 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      });
-      const d = await res.json();
-      const cell = document.getElementById(`call-cell-${cid}`);
-      const phoneHtml = btn.closest('td').querySelector('div') 
-        ? btn.closest('td').querySelector('div').outerHTML : '';
-
-      if (d.call_status === 'called') {
-        cell.innerHTML = `
-          <button class="btn btn-xs btn-success call-toggle-btn"
-                  data-cid="${cid}" title="Mark as Not Called">
-            <i class="bi bi-telephone-check-fill me-1"></i>Called
-          </button>${phoneHtml}`;
-      } else {
-        cell.innerHTML = `
-          <button class="btn btn-xs btn-outline-danger call-toggle-btn"
-                  data-cid="${cid}" title="Mark as Called">
-            <i class="bi bi-telephone-x me-1"></i>Call?
-          </button>${phoneHtml}`;
-      }
-      // Re-attach listener to new button
-      cell.querySelector('.call-toggle-btn').addEventListener('click', arguments.callee);
-    } catch(e) {
-      alert('Failed to update call status.');
-      btn.disabled = false;
-    }
-  });
-});
-
-// ── Scan All Jobs ─────────────────────────────────────────────────────────────
-document.getElementById('scanAllBtn').addEventListener('click', async () => {
-  try {
-    const res = await fetch('/scrape/jobs/all', { method: 'POST' });
+  document.getElementById('logEmailForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const cid = document.getElementById('logEmailCid').value;
+    const form = e.target;
+    const data = Object.fromEntries(new FormData(form));
+    const res = await fetch(`/companies/${cid}/log-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
     if (res.ok) {
-      alert("Scan started! You can navigate the app while it runs in the background.");
+      logEmailModal.hide();
+      const result = await res.json();
+      alert(`Email logged! Follow-up scheduled for ${result.follow_up_due}`);
+      location.reload();
     } else {
-      alert("Failed to start scan.");
+      alert('Failed to log email. Please try again.');
     }
-  } catch(e) {
-    alert('Failed to start scan: ' + e);
+  });
+
+  // Scan jobs button
+  document.querySelectorAll('.scan-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const cid = btn.dataset.cid;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+      try {
+        const res = await fetch(`/scrape/jobs/${cid}`, { method: 'POST' });
+        const data = await res.json();
+        alert(`Scan complete! Found ${data.openings_found} openings (${data.new_count} new).`);
+      } catch (e) {
+        alert('Scan failed.');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-search"></i>';
+      }
+    });
+  });
+
+  // Call toggle — AJAX, no page reload
+  document.querySelectorAll('.call-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', async function callToggleHandler() {
+      const cid = this.dataset.cid;
+      this.disabled = true;
+      try {
+        const res = await fetch(`/companies/${cid}/toggle-call`, {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        const d = await res.json();
+
+        let newBtnHtml = '';
+        if (d.call_status === 'called') {
+          newBtnHtml = `<button class="btn btn-xs btn-success call-toggle-btn" data-cid="${cid}" title="Mark as Not Called"><i class="bi bi-telephone-check-fill me-1"></i>Called</button>`;
+        } else {
+          newBtnHtml = `<button class="btn btn-xs btn-outline-danger call-toggle-btn" data-cid="${cid}" title="Mark as Called"><i class="bi bi-telephone-x me-1"></i>Call?</button>`;
+        }
+
+        this.outerHTML = newBtnHtml;
+        document.querySelector(`#call-cell-${cid} .call-toggle-btn`).addEventListener('click', callToggleHandler);
+      } catch (e) {
+        alert('Failed to update call status.');
+        this.disabled = false;
+      }
+    });
+  });
+
+  // Inline Phone Edit
+  document.querySelectorAll('.edit-phone-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const cid = btn.dataset.cid;
+      const container = document.getElementById(`phone-container-${cid}`);
+      container.querySelector('.phone-display').classList.add('d-none');
+      container.querySelector('.phone-edit-form').classList.remove('d-none');
+      container.querySelector('.phone-input').focus();
+    });
+  });
+
+  document.querySelectorAll('.save-phone-list-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const cid = btn.dataset.cid;
+      const container = document.getElementById(`phone-container-${cid}`);
+      const input = container.querySelector('.phone-input');
+      const phone = input.value.trim();
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="bi bi-hourglass"></i>';
+
+      try {
+        const res = await fetch(`/companies/${cid}/save-phone`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify({ phone_number: phone }),
+        });
+        const d = await res.json();
+        if (d.success) {
+          const display = container.querySelector('.phone-display');
+          if (d.phone_number) {
+            display.innerHTML = `<i class="bi bi-phone me-1"></i><span class="phone-text">${d.phone_number}</span>
+                               <a href="#" class="edit-phone-btn ms-1 text-muted" data-cid="${cid}" title="Edit"><i class="bi bi-pencil"></i></a>`;
+          } else {
+            display.innerHTML = `<a href="#" class="edit-phone-btn text-muted text-decoration-none" data-cid="${cid}"><i class="bi bi-plus-circle me-1"></i>Add Phone</a>`;
+          }
+
+          // Re-attach edit listener
+          display.querySelector('.edit-phone-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            display.classList.add('d-none');
+            container.querySelector('.phone-edit-form').classList.remove('d-none');
+            input.focus();
+          });
+
+          display.classList.remove('d-none');
+          container.querySelector('.phone-edit-form').classList.add('d-none');
+        } else {
+          alert('Failed to save phone.');
+        }
+      } catch (e) {
+        alert('Error saving phone.');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check"></i>';
+      }
+    });
+  });
+
+
+  // ── Scan All Jobs ─────────────────────────────────────────────────────────────
+  document.getElementById('scanAllBtn').addEventListener('click', async () => {
+    try {
+      const res = await fetch('/scrape/jobs/all', { method: 'POST' });
+      if (res.ok) {
+        alert("Scan started! You can navigate the app while it runs in the background.");
+      } else {
+        alert("Failed to start scan.");
+      }
+    } catch (e) {
+      alert('Failed to start scan: ' + e);
+    }
+  });
+
+  // ── Copy Link Buttons ─────────────────────────────────────────────────────────────
+  document.querySelectorAll('.copy-link-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const url = btn.dataset.url;
+      navigator.clipboard.writeText(url).then(() => {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<i class="bi bi-check"></i>';
+        btn.classList.add('btn-success');
+        btn.classList.remove('btn-outline-secondary');
+        setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('btn-success'); btn.classList.add('btn-outline-secondary'); }, 1600);
+      });
+    });
+  });
+
+  // ── Prompt Shortcut Buttons (list page) ───────────────────────────────────────
+  const listPromptModal = new bootstrap.Modal(document.getElementById('listPromptModal'));
+
+  function buildListPromptLinks(website, career, name, container) {
+    container.innerHTML = '';
+    const links = [];
+    if (website) links.push({ label: '\ud83c\udf10 Website', url: website });
+    if (career) links.push({ label: '\ud83d\udcbc Careers', url: career });
+    const domain = (website || '').replace(/^https?:\/\//, '').split('/')[0];
+    if (domain) links.push({ label: '\ud83e\udd4a Hunter.io', url: `https://hunter.io/search/${domain}` });
+    links.push({ label: '\ud83d\udd0d Email Verifier', url: 'https://getprospect.com/email-verifier' });
+    links.push({ label: '\ud83d\ude80 Apollo.io', url: `https://app.apollo.io/#/people?organizationNames[]=${encodeURIComponent(name)}` });
+    links.push({ label: '\ud83d\udd16 RocketReach', url: `https://rocketreach.co/search?query=${encodeURIComponent(name)}` });
+    links.push({ label: '\ud83d\udcf6 SignalHire', url: `https://www.signalhire.com/search/people?query=${encodeURIComponent(name)}` });
+    links.push({ label: '\ud83d\udcca Crunchbase', url: `https://www.crunchbase.com/search/organizations/field/organizations/facet_ids/${encodeURIComponent(name.toLowerCase().replace(/\s+/g, '-'))}` });
+    links.push({ label: '\ud83d\udd17 LinkedIn', url: `https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(name)}` });
+    links.push({ label: '\ud83d\udcdd Wellfound', url: `https://wellfound.com/company/${encodeURIComponent(name.toLowerCase().replace(/\s+/g, '-'))}` });
+    links.forEach(({ label, url }) => {
+      const a = document.createElement('a');
+      a.href = url; a.target = '_blank'; a.rel = 'noopener';
+      a.className = 'btn btn-xs';
+      a.style.cssText = 'background:#21262d;color:#58a6ff;border:1px solid #30363d;font-size:0.72rem;padding:3px 8px;';
+      a.textContent = label;
+      const cb = document.createElement('button');
+      cb.className = 'btn btn-xs ms-1';
+      cb.style.cssText = 'background:#21262d;color:#8b949e;border:1px solid #30363d;font-size:0.7rem;padding:2px 6px;';
+      cb.title = 'Copy URL'; cb.innerHTML = '<i class="bi bi-clipboard"></i>';
+      cb.addEventListener('click', (e) => { e.preventDefault(); navigator.clipboard.writeText(url); cb.innerHTML = '<i class="bi bi-check"></i>'; setTimeout(() => { cb.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 1500); });
+      const wrap = document.createElement('span'); wrap.className = 'd-inline-flex align-items-center gap-0';
+      wrap.appendChild(a); wrap.appendChild(cb); container.appendChild(wrap);
+    });
   }
-});
+
+  document.querySelectorAll('.prompt-shortcut-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const website = btn.dataset.website || '';
+      const name = btn.dataset.name || '';
+      const career = btn.dataset.career || '';
+
+      document.getElementById('listPromptCompanyName').textContent = name;
+      buildListPromptLinks(website, career, name, document.getElementById('listPromptQuickLinks'));
+
+      // const p1 = `Find verified employee/HR emails, phone numbers, and active intern openings for "${name}"${website ? (' (website: ' + website + ')') : ''}.\n\n1. Find emails and phone numbers on their website, LinkedIn, and Hunter.io.\n2. VERIFY EVERY EMAIL on https://getprospect.com/email-verifier. Only return VALID/DELIVERABLE emails.\n3. Check their career page${career ? (' (' + career + ')') : ''} and LinkedIn for Intern/Fresher jobs.\n4. CONFIRM jobs are CURRENTLY OPEN and accepting applications (skip closed/expired ones).\n\nDeliver:\n- \u2709\ufe0f Verified Contacts (Name | Role | Email | Linkedin | Phone)\n- \ud83d\udcbc Open Intern Jobs (Title | Link | Deadline)\n- \u274c Failed/Unverified Emails (so I don't use them)`;
+
+      // const p2 = `If you can't find direct HR emails for "${name}"${website ? (' (' + website + ')') : ''}, guess the email pattern.\n\n1. Check Hunter.io / Apollo.io to find the company's email format (e.g. first.last@domain.com) and any phone numbers.\n2. Find the names of HR, Recruiters, or Talent Acquisition on LinkedIn.\n3. Generate likely emails using the pattern and verify them on https://getprospect.com/email-verifier.\n\nDeliver:\n- The email pattern used\n- Top 3 verified (or most likely) HR contacts (Name | Title | Email | Phone)`;
+
+      const p1 = `Research "${name}"${website ? ` (Official Website: ${website})` : ""}.
+
+      PRIMARY PRIORITY (90%):
+      Find VERIFIED employee and HR contact information.
+
+      Search aggressively across any trustworthy public source, including:
+      - Official company website
+      - Contact, About, Team and Careers pages
+      - LinkedIn (Company & Employees)
+      - Hunter.io
+      - Apollo.io
+      - RocketReach
+      - GetProspect
+      - SignalHire
+      - Lusha
+      - Clearbit
+      - ZoomInfo (public results)
+      - Google Search
+      - Bing Search
+      - GitHub
+      - Crunchbase
+      - Any other public website containing employee contact information.
+
+      Requirements:
+      1. Find HR, Recruiters, Talent Acquisition, Founders, Engineering Managers, Team Leads and company contacts.
+      2. Find all publicly available employee and company phone numbers.
+      3. Collect all publicly available emails.
+      4. VERIFY every email using https://getprospect.com/email-verifier or another reliable email verifier.
+      5. Label every email as VALID, DELIVERABLE, RISKY, INVALID or UNKNOWN.
+      6. NEVER invent email addresses.
+      7. Include the source URL for every email and phone number.
+
+      SECONDARY PRIORITY (10%):
+      Quickly check only:
+      - Official Careers page${career ? ` (${career})` : ""}
+      - LinkedIn Jobs
+
+      If internship/fresher openings exist, list them.
+      Do NOT spend time searching multiple job boards.
+
+      Deliver:
+      📧 Verified Contacts
+      (Name | Role | Email | Verification | LinkedIn | Phone | Source)
+
+      ☎️ Company Phone Numbers
+      (Department | Phone | Source)
+
+      💼 Active Intern Jobs (if found)
+      (Title | Apply Link)
+
+      ❌ Unverified/Invalid Emails
+      (Email | Reason | Source)`;
+
+      const p2 = `If verified HR emails cannot be found for "${name}"${website ? ` (${website})` : ""}, perform an intensive contact investigation.
+
+      Search using any trustworthy public source including:
+      - Official Website
+      - LinkedIn
+      - Hunter.io
+      - Apollo.io
+      - RocketReach
+      - GetProspect
+      - SignalHire
+      - Lusha
+      - Clearbit
+      - ZoomInfo (public results)
+      - Google Search
+      - Bing Search
+      - GitHub
+      - Crunchbase
+
+      Tasks:
+      1. Determine the company's email naming pattern (e.g. first.last@company.com).
+      2. Find HR, Recruiters, Talent Acquisition, Hiring Managers, Engineering Managers, CTOs, Founders and Team Leads.
+      3. Generate possible emails ONLY if the email pattern is confirmed from reliable evidence.
+      4. Verify generated emails using GetProspect or another trusted email verifier whenever possible.
+      5. Find publicly available phone numbers for every contact.
+      6. Never mark a generated email as VERIFIED unless an email verifier confirms it.
+
+      Deliver:
+      📌 Email Pattern
+      (Pattern | Evidence | Confidence)
+
+      👥 Best Contacts
+      (Name | Role | Email | Verification | LinkedIn | Phone | Source)
+
+      ☎️ Company Phone Numbers
+      (Department | Phone | Source)`;
+
+      document.getElementById('listPrompt1Text').value = p1;
+      document.getElementById('listPrompt2Text').value = p2;
+      listPromptModal.show();
+    });
+  });
+
+  function listCopyText(tid, bid) {
+    navigator.clipboard.writeText(document.getElementById(tid).value).then(() => {
+      const b = document.getElementById(bid); const orig = b.innerHTML;
+      b.innerHTML = '<i class="bi bi-check me-1"></i>Copied!'; b.style.background = '#2ea043';
+      setTimeout(() => { b.innerHTML = orig; b.style.background = '#238636'; }, 2000);
+    });
+  }
+  document.getElementById('listCopyPrompt1Btn').addEventListener('click', () => listCopyText('listPrompt1Text', 'listCopyPrompt1Btn'));
+  document.getElementById('listCopyPrompt2Btn').addEventListener('click', () => listCopyText('listPrompt2Text', 'listCopyPrompt2Btn'));
+  document.getElementById('listCopyAllPromptsBtn').addEventListener('click', () => {
+    const both = document.getElementById('listPrompt1Text').value + '\n\n---\n\n' + document.getElementById('listPrompt2Text').value;
+    navigator.clipboard.writeText(both).then(() => {
+      const b = document.getElementById('listCopyAllPromptsBtn');
+      b.innerHTML = '<i class="bi bi-check me-1"></i>Copied All!';
+      setTimeout(() => { b.innerHTML = '<i class="bi bi-clipboard-check me-1"></i>Copy All Prompts'; }, 2000);
+    });
+  });
 </script>
 {% endblock %}
