@@ -220,3 +220,10 @@ SESSION 7 (Question Answered & Branch Auto-Switching)
 -----------------------
 - Answered a user query about which branch code runs when executing `start.bat`.
 - MODIFIED: start.bat to automatically save the current branch, checkout `main` before running the Python script, and checkout the saved original branch when the script exits.
+
+SESSION 8 (Google Sheets Integration)
+-----------------------
+- ADDED: `services/google_sheets.py` to send webhook payloads to a Google Apps Script in the background.
+- MODIFIED: `blueprints/companies.py` to trigger background webhooks on company edit, log email, save phone, and toggle call status. Added a new route for bulk syncing.
+- MODIFIED: `templates/companies/list.html` to include a "Sync Sheets" button and a modal for configuring the Webhook URL.
+- MODIFIED: `services/google_sheets.py` and Apps Script to also sync the `linkedin_url` column.

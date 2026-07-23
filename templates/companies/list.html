@@ -11,6 +11,9 @@
     <button id="scanAllBtn" class="btn btn-success">
       <i class="bi bi-search me-1"></i> Scan All Jobs
     </button>
+    <button class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#googleSheetsModal">
+      <i class="bi bi-google me-1"></i> Sync Sheets
+    </button>
     <a href="{{ url_for('companies.upload_form') }}" class="btn btn-primary">
       <i class="bi bi-upload me-1"></i> Upload XLSX
     </a>
@@ -257,6 +260,27 @@
     </nav>
   </div>
   {% endif %}
+</div>
+
+<!-- Google Sheets Sync Modal -->
+<div class="modal fade" id="googleSheetsModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content text-bg-dark">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title"><i class="bi bi-google me-2"></i>Google Sheets Sync</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted mb-3">Google Sheets syncing is active via your .env file.</p>
+        <p class="small text-warning mb-0"><i class="bi bi-exclamation-triangle me-1"></i> Clicking 'Sync Now' will erase the current contents of the Google Sheet and upload all current companies.</p>
+        <div id="syncStatusMsg" class="mt-3 small"></div>
+      </div>
+      <div class="modal-footer border-secondary">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" id="syncSheetsBtn" class="btn btn-success"><i class="bi bi-cloud-arrow-up me-1"></i>Sync Now</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ── Log Email Modal ────────────────────────────────────────────────────── -->
@@ -694,5 +718,37 @@
       setTimeout(() => { b.innerHTML = '<i class="bi bi-clipboard-check me-1"></i>Copy All Prompts'; }, 2000);
     });
   });
+
+  const syncSheetsBtn = document.getElementById('syncSheetsBtn');
+  if (syncSheetsBtn) {
+    syncSheetsBtn.addEventListener('click', async () => {
+      const msg = document.getElementById('syncStatusMsg');
+      syncSheetsBtn.disabled = true;
+      syncSheetsBtn.innerHTML = '<i class="bi bi-hourglass-split spin me-1"></i>Syncing...';
+      msg.textContent = '';
+      msg.className = 'mt-3 small text-info';
+      
+      try {
+        const res = await fetch('{{ url_for("companies.sync_google_sheets") }}', {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          msg.innerHTML = '<i class="bi bi-check-circle me-1"></i>Done! ' + data.message;
+          msg.className = 'mt-3 small text-success';
+        } else {
+          msg.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i>Error: ' + (data.error || 'Unknown error');
+          msg.className = 'mt-3 small text-danger';
+        }
+      } catch (e) {
+        msg.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i>Error connecting to server.';
+        msg.className = 'mt-3 small text-danger';
+      } finally {
+        syncSheetsBtn.disabled = false;
+        syncSheetsBtn.innerHTML = '<i class="bi bi-cloud-arrow-up me-1"></i>Sync Now';
+      }
+    });
+  }
 </script>
 {% endblock %}

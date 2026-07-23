@@ -20,6 +20,7 @@ from config import load_settings
 from models import Company, FollowUp, Application, Contact, LinkedInEvent, Opening, db
 from services.spreadsheet_parser import parse_xlsx
 from services.reminders import due_on_for_email
+from services.google_sheets import trigger_update_company_row, trigger_bulk_sync
 
 companies_bp = Blueprint("companies", __name__, url_prefix="/companies")
 
@@ -81,7 +82,7 @@ def list_companies():
     ]
 
     # Infopark applied counts per company_id
-    from models import InfoparkApplied
+    from models import InfoparkApplied, UserSetting
     from sqlalchemy import func as sqlfunc
     infopark_rows = (
         db.session.query(InfoparkApplied.matched_company_id,
@@ -91,6 +92,9 @@ def list_companies():
         .all()
     )
     infopark_applied_counts = {row.matched_company_id: row.cnt for row in infopark_rows}
+
+    webhook_setting = UserSetting.query.filter_by(key="google_sheets_webhook_url").first()
+    webhook_url = webhook_setting.value if webhook_setting else ""
 
     return render_template(
         "companies/list.html",
@@ -103,6 +107,7 @@ def list_companies():
             "min_score": min_score, "max_score": max_score, "sort": sort,
             "has_infopark": has_infopark,
         },
+        webhook_url=webhook_url,
     )
 
 
@@ -251,6 +256,7 @@ def update_company(cid: int):
                 setattr(company, field, val or None)
     company.touch()
     db.session.commit()
+    trigger_update_company_row(company)
     flash("Company updated.", "success")
     return redirect(url_for("companies.detail", cid=cid))
 
@@ -263,6 +269,16 @@ def delete_company(cid: int):
     db.session.commit()
     flash(f"Deleted {company.name}.", "warning")
     return redirect(url_for("companies.list_companies"))
+
+@companies_bp.route("/sync-google-sheets", methods=["POST"])
+def sync_google_sheets():
+    companies = Company.query.order_by(Company.match_score.desc()).all()
+    try:
+        from services.google_sheets import trigger_bulk_sync
+        trigger_bulk_sync(companies)
+        return jsonify({"success": True, "message": f"Successfully started sync for {len(companies)} companies."})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # ── Log HR Email ───────────────────────────────────────────────────────────────
@@ -327,6 +343,7 @@ def log_email(cid: int):
     company.touch()
 
     db.session.commit()
+    trigger_update_company_row(company)
 
     if request.is_json or request.content_type == "application/json":
         return jsonify({"success": True, "follow_up_due": due_date.isoformat()}), 201
@@ -395,6 +412,7 @@ def toggle_call(cid: int):
         msg = "Marked as called!"
     company.touch()
     db.session.commit()
+    trigger_update_company_row(company)
 
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
@@ -416,6 +434,7 @@ def save_phone(cid: int):
     company.phone_number = phone
     company.touch()
     db.session.commit()
+    trigger_update_company_row(company)
 
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({"success": True, "phone_number": phone})
@@ -455,3 +474,29 @@ def export_json():
         mimetype="application/json",
         headers={"Content-Disposition": "attachment; filename=companies_export.json"},
     )
+
+
+# ── Google Sheets Sync ────────────────────────────────────────────────────────
+@companies_bp.route("/sync-google-sheets", methods=["POST"])
+def sync_google_sheets():
+    data = request.get_json(force=True, silent=True) or request.form
+    webhook_url = data.get("webhook_url")
+    
+    if webhook_url:
+        from models import UserSetting
+        setting = UserSetting.query.filter_by(key="google_sheets_webhook_url").first()
+        if not setting:
+            setting = UserSetting(key="google_sheets_webhook_url", value=webhook_url)
+            db.session.add(setting)
+        else:
+            setting.value = webhook_url
+        db.session.commit()
+
+    companies = Company.query.order_by(Company.match_score.desc()).all()
+    trigger_bulk_sync(companies)
+    
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"success": True, "message": "Bulk sync started in background"})
+        
+    flash("Google Sheets bulk sync started.", "success")
+    return redirect(url_for("companies.list_companies"))

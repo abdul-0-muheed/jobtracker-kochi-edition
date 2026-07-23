@@ -547,11 +547,7 @@
     // - The email pattern used
     // - Top 3 verified (or most likely) HR contacts (Name | Title | Email | Phone)`;
 
-    //     document.getElementById('prompt1Text').value = p1;
-    //     document.getElementById('prompt2Text').value = p2;
-
-    //     promptModal.show();
-    //   });
+    // -- Prompt 2: Email Pattern + Intelligence Scan (Legacy, replaced below) --
 
     const p2 = `If verified HR emails cannot be found for "${name}"${website ? ` (${website})` : ""}, perform an intensive contact investigation.
 
@@ -590,141 +586,147 @@
     ☎️ Company Numbers
     Department | Phone | Source`;
 
-    // Copy helpers
-    function copyText(textareaId, btnId) {
-      const text = document.getElementById(textareaId).value;
-      navigator.clipboard.writeText(text).then(() => {
-        const btn = document.getElementById(btnId);
-        const orig = btn.innerHTML;
-        btn.innerHTML = '<i class="bi bi-check me-1"></i>Copied!';
-        btn.style.background = '#2ea043';
-        setTimeout(() => { btn.innerHTML = orig; btn.style.background = '#238636'; }, 2000);
-      });
-    }
+    document.getElementById('prompt1Text').value = p1;
+    document.getElementById('prompt2Text').value = p2;
 
-    document.getElementById('copyPrompt1Btn').addEventListener('click', () => copyText('prompt1Text', 'copyPrompt1Btn'));
-    document.getElementById('copyPrompt2Btn').addEventListener('click', () => copyText('prompt2Text', 'copyPrompt2Btn'));
-    document.getElementById('copyAllPromptsBtn').addEventListener('click', () => {
-      const both = document.getElementById('prompt1Text').value + '\n\n---\n\n' + document.getElementById('prompt2Text').value;
-      navigator.clipboard.writeText(both).then(() => {
-        const btn = document.getElementById('copyAllPromptsBtn');
-        btn.innerHTML = '<i class="bi bi-check me-1"></i>Copied All!';
-        setTimeout(() => { btn.innerHTML = '<i class="bi bi-clipboard-check me-1"></i>Copy All Prompts'; }, 2000);
-      });
+    promptModal.show();
+  });
+
+  // Copy helpers
+  function copyText(textareaId, btnId) {
+    const text = document.getElementById(textareaId).value;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById(btnId);
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="bi bi-check me-1"></i>Copied!';
+      btn.style.background = '#2ea043';
+      setTimeout(() => { btn.innerHTML = orig; btn.style.background = '#238636'; }, 2000);
     });
+  }
 
-    // Scan jobs
-    document.getElementById('scanJobsBtn').addEventListener('click', async () => {
-      const btn = document.getElementById('scanJobsBtn');
-      btn.disabled = true;
-      btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Scanning…';
-      try {
-        const res = await fetch(`/scrape/jobs/{{ company.id }}`, { method: 'POST' });
-        const data = await res.json();
-        alert(`Found ${data.openings_found} openings (${data.new_count} new). Refresh to see updates.`);
-        location.reload();
-      } catch (e) {
-        alert('Scan failed.');
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-search me-1"></i> Scan Jobs';
+  document.getElementById('copyPrompt1Btn').addEventListener('click', () => copyText('prompt1Text', 'copyPrompt1Btn'));
+  document.getElementById('copyPrompt2Btn').addEventListener('click', () => copyText('prompt2Text', 'copyPrompt2Btn'));
+  document.getElementById('copyAllPromptsBtn').addEventListener('click', () => {
+    const both = document.getElementById('prompt1Text').value + '\n\n---\n\n' + document.getElementById('prompt2Text').value;
+    navigator.clipboard.writeText(both).then(() => {
+      const btn = document.getElementById('copyAllPromptsBtn');
+      btn.innerHTML = '<i class="bi bi-check me-1"></i>Copied All!';
+      setTimeout(() => { btn.innerHTML = '<i class="bi bi-clipboard-check me-1"></i>Copy All Prompts'; }, 2000);
+    });
+  });
+
+  // Scan jobs
+  document.getElementById('scanJobsBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('scanJobsBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Scanning…';
+    try {
+      const res = await fetch(`/scrape/jobs/{{ company.id }}`, { method: 'POST' });
+      const data = await res.json();
+      alert(`Found ${data.openings_found} openings (${data.new_count} new). Refresh to see updates.`);
+      location.reload();
+    } catch (e) {
+      alert('Scan failed.');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-search me-1"></i> Scan Jobs';
+    }
+  });
+
+  // Mark done buttons
+  document.querySelectorAll('.mark-done-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const fuid = btn.dataset.fuid;
+      const res = await fetch(`/companies/follow-ups/${fuid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'done' }),
+      });
+      if (res.ok) {
+        btn.closest('.action-item').remove();
       }
     });
+  });
 
-    // Mark done buttons
-    document.querySelectorAll('.mark-done-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const fuid = btn.dataset.fuid;
-        const res = await fetch(`/companies/follow-ups/${fuid}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'done' }),
-        });
-        if (res.ok) {
-          btn.closest('.action-item').remove();
-        }
-      });
-    });
-
-    // Save phone number
-    const savePhoneBtn = document.getElementById('savePhoneBtn');
-    if (savePhoneBtn) {
-      savePhoneBtn.addEventListener('click', async () => {
-        const cid = document.getElementById('callToggleBtn').dataset.cid;
-        const phone = document.getElementById('phoneInput').value.trim();
-        const msg = document.getElementById('phoneSaveMsg');
-        savePhoneBtn.disabled = true;
-        savePhoneBtn.textContent = '…';
-        try {
-          const res = await fetch(`/companies/${cid}/save-phone`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            body: JSON.stringify({ phone_number: phone }),
-          });
-          const d = await res.json();
-          msg.textContent = d.success ? '✓ Saved!' : 'Save failed.';
-          msg.className = d.success ? 'form-text text-success' : 'form-text text-danger';
-        } catch (e) {
-          msg.textContent = 'Error saving.';
-          msg.className = 'form-text text-danger';
-        } finally {
-          savePhoneBtn.disabled = false;
-          savePhoneBtn.textContent = 'Save';
-          setTimeout(() => { msg.textContent = ''; }, 3000);
-        }
-      });
-    }
-
-    // Call status toggle on detail page
-    const callToggleBtn = document.getElementById('callToggleBtn');
-    if (callToggleBtn) {
-      callToggleBtn.addEventListener('click', async () => {
-        const cid = callToggleBtn.dataset.cid;
-        callToggleBtn.disabled = true;
-        try {
-          const res = await fetch(`/companies/${cid}/toggle-call`, {
-            method: 'POST',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-          });
-          const d = await res.json();
-          if (d.call_status === 'called') {
-            callToggleBtn.className = 'btn btn-sm btn-success w-100';
-            callToggleBtn.innerHTML = '<i class="bi bi-telephone-check-fill me-1"></i> Called ✓ — Click to undo';
-            callToggleBtn.dataset.status = 'called';
-          } else {
-            callToggleBtn.className = 'btn btn-sm btn-outline-danger w-100';
-            callToggleBtn.innerHTML = '<i class="bi bi-telephone-x me-1"></i> Not Called — Click to mark as called';
-            callToggleBtn.dataset.status = 'not_called';
-          }
-        } finally {
-          callToggleBtn.disabled = false;
-        }
-        // Deep Scan (LinkedIn)
-      });
-    }
-
-    document.getElementById('deepScanBtn')?.addEventListener('click', async () => {
-      const btn = document.getElementById('deepScanBtn');
-      const originalHtml = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = '<i class="bi bi-hourglass-split spin me-1"></i> Deep Scanning...';
-
+  // Save phone number
+  const savePhoneBtn = document.getElementById('savePhoneBtn');
+  if (savePhoneBtn) {
+    savePhoneBtn.addEventListener('click', async () => {
+      const cid = document.getElementById('callToggleBtn').dataset.cid;
+      const phone = document.getElementById('phoneInput').value.trim();
+      const msg = document.getElementById('phoneSaveMsg');
+      savePhoneBtn.disabled = true;
+      savePhoneBtn.textContent = '…';
       try {
-        const res = await fetch(`/linkedin_scraper/scan/${companyId}`, { method: 'POST' });
-        const data = await res.json();
-        if (res.ok) {
-          alert(`Deep Scan complete! Added ${data.added} jobs, updated ${data.updated}.`);
-          setTimeout(() => location.reload(), 2000);
-        } else {
-          alert(data.error || 'Deep scan failed');
-          btn.disabled = false;
-          btn.innerHTML = originalHtml;
-        }
+        const res = await fetch(`/companies/${cid}/save-phone`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify({ phone_number: phone }),
+        });
+        const d = await res.json();
+        msg.textContent = d.success ? '✓ Saved!' : 'Save failed.';
+        msg.className = d.success ? 'form-text text-success' : 'form-text text-danger';
       } catch (e) {
-        alert('Network error during deep scan');
+        msg.textContent = 'Error saving.';
+        msg.className = 'form-text text-danger';
+      } finally {
+        savePhoneBtn.disabled = false;
+        savePhoneBtn.textContent = 'Save';
+        setTimeout(() => { msg.textContent = ''; }, 3000);
+      }
+    });
+  }
+
+  // Call status toggle on detail page
+  const callToggleBtn = document.getElementById('callToggleBtn');
+  if (callToggleBtn) {
+    callToggleBtn.addEventListener('click', async () => {
+      const cid = callToggleBtn.dataset.cid;
+      callToggleBtn.disabled = true;
+      try {
+        const res = await fetch(`/companies/${cid}/toggle-call`, {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        const d = await res.json();
+        if (d.call_status === 'called') {
+          callToggleBtn.className = 'btn btn-sm btn-success w-100';
+          callToggleBtn.innerHTML = '<i class="bi bi-telephone-check-fill me-1"></i> Called ✓ — Click to undo';
+          callToggleBtn.dataset.status = 'called';
+        } else {
+          callToggleBtn.className = 'btn btn-sm btn-outline-danger w-100';
+          callToggleBtn.innerHTML = '<i class="bi bi-telephone-x me-1"></i> Not Called — Click to mark as called';
+          callToggleBtn.dataset.status = 'not_called';
+        }
+      } finally {
+        callToggleBtn.disabled = false;
+      }
+      // Deep Scan (LinkedIn)
+    });
+  }
+
+  document.getElementById('deepScanBtn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('deepScanBtn');
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split spin me-1"></i> Deep Scanning...';
+
+    try {
+      const res = await fetch(`/linkedin_scraper/scan/${companyId}`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`Deep Scan complete! Added ${data.added} jobs, updated ${data.updated}.`);
+        setTimeout(() => location.reload(), 2000);
+      } else {
+        alert(data.error || 'Deep scan failed');
         btn.disabled = false;
         btn.innerHTML = originalHtml;
       }
-    });
+    } catch (e) {
+      alert('Network error during deep scan');
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  });
 </script>
 {% endblock %}
